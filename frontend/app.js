@@ -1017,6 +1017,69 @@ const DAL = {
           TotalDays: 3,
           Status: 'Discharged',
           CreatedAt: '2026-02-15T15:00:00Z'
+        },
+        {
+          AdmissionID: 'ADM-008',
+          AdmissionNumber: 'IPD-2026-0008',
+          PatientID: 'PAT-014',
+          DoctorID: 'DOC-004',
+          DepartmentID: 'DEP-004',
+          BedID: 'BED-009',
+          AdmissionDate: '2026-02-20',
+          AdmissionType: 'Elective',
+          SourceEncounterID: 'VIS-014',
+          AdmittingDiagnosis: 'Meniscectomy Recovery',
+          CurrentCondition: 'Stable',
+          IpdStage: 'Completed',
+          ExpectedDischargeDate: '2026-02-22',
+          ActualDischargeDate: '2026-02-22',
+          DischargeDisposition: 'Discharged Home',
+          DischargeSummary: 'Good weight bearing tolerance. Physical therapy protocol prescribed.',
+          TotalDays: 2,
+          Status: 'Discharged',
+          CreatedAt: '2026-02-20T10:00:00Z'
+        },
+        {
+          AdmissionID: 'ADM-009',
+          AdmissionNumber: 'IPD-2026-0009',
+          PatientID: 'PAT-018',
+          DoctorID: 'DOC-001',
+          DepartmentID: 'DEP-001',
+          BedID: 'BED-005',
+          AdmissionDate: '2026-02-25',
+          AdmissionType: 'Emergency',
+          SourceEncounterID: 'VIS-018',
+          AdmittingDiagnosis: 'COPD Exacerbation with Hypoxemia',
+          CurrentCondition: 'Stable',
+          IpdStage: 'Completed',
+          ExpectedDischargeDate: '2026-03-01',
+          ActualDischargeDate: '2026-03-01',
+          DischargeDisposition: 'Discharged Home',
+          DischargeSummary: 'Bronchospasm resolved with bronchodilators and systemic steroids. SpO2 96% on room air.',
+          TotalDays: 4,
+          Status: 'Discharged',
+          CreatedAt: '2026-02-25T11:00:00Z'
+        },
+        {
+          AdmissionID: 'ADM-010',
+          AdmissionNumber: 'IPD-2026-0010',
+          PatientID: 'PAT-015',
+          DoctorID: 'DOC-005',
+          DepartmentID: 'DEP-005',
+          BedID: 'BED-012',
+          AdmissionDate: '2026-03-05',
+          AdmissionType: 'OPD Transfer',
+          SourceEncounterID: 'VIS-015',
+          AdmittingDiagnosis: 'Severe Hyperglycemia with Osmotic Diuresis',
+          CurrentCondition: 'Stable',
+          IpdStage: 'Completed',
+          ExpectedDischargeDate: '2026-03-08',
+          ActualDischargeDate: '2026-03-08',
+          DischargeDisposition: 'Discharged Home',
+          DischargeSummary: 'Insulin regimen optimized. Blood glucose normalized to 110-140 mg/dL.',
+          TotalDays: 3,
+          Status: 'Discharged',
+          CreatedAt: '2026-03-05T08:30:00Z'
         }
       ],
       DailyRounds: [
@@ -3422,12 +3485,45 @@ function getInterpretationBadge(interp) {
 function renderAdmissionsGrid() {
   const allAdmissions = DAL.find('Admissions');
   const allBeds = DAL.find('Beds');
+  const allDepartments = DAL.find('Departments') || [];
   const activeAdmissions = allAdmissions.filter(a => a.Status === 'Admitted');
   const dischargedAdmissions = allAdmissions.filter(a => a.Status === 'Discharged');
   const occupiedBeds = allBeds.filter(b => b.Status === 'Occupied');
   const occupancyRate = allBeds.length > 0 ? Math.round((occupiedBeds.length / allBeds.length) * 100) : 0;
 
-  const filtered = filterAndSortRecords(allAdmissions, ['AdmissionID', 'AdmissionNumber', 'AdmittingDiagnosis', 'CurrentCondition', 'IpdStage', 'Status']);
+  if (!window._admissionDepartmentFilter) window._admissionDepartmentFilter = 'ALL';
+
+  let admissionsToDisplay = allAdmissions;
+  if (window._admissionDepartmentFilter && window._admissionDepartmentFilter !== 'ALL') {
+    admissionsToDisplay = admissionsToDisplay.filter(a => {
+      if (a.DepartmentID === window._admissionDepartmentFilter) return true;
+      const doc = DAL.findById('Doctors', a.DoctorID);
+      return doc && doc.DepartmentID === window._admissionDepartmentFilter;
+    });
+  }
+
+  const enrichedAdmissions = admissionsToDisplay.map(a => {
+    const pat = DAL.findById('Patients', a.PatientID) || {};
+    const doc = DAL.findById('Doctors', a.DoctorID) || {};
+    const dept = DAL.findById('Departments', a.DepartmentID) || (doc.DepartmentID ? DAL.findById('Departments', doc.DepartmentID) : null) || {};
+    const bed = DAL.findById('Beds', a.BedID) || {};
+    return {
+      ...a,
+      DepartmentName: dept.DepartmentName || '',
+      DepartmentCode: dept.DepartmentCode || '',
+      PatientName: `${pat.FirstName || ''} ${pat.LastName || ''}`,
+      PatientNumber: pat.PatientNumber || '',
+      DoctorName: doc.DoctorName || '',
+      BedNumber: bed.BedNumber || '',
+      WardName: bed.WardName || ''
+    };
+  });
+
+  const filtered = filterAndSortRecords(enrichedAdmissions, [
+    'AdmissionID', 'AdmissionNumber', 'AdmittingDiagnosis', 'CurrentCondition', 
+    'IpdStage', 'Status', 'DepartmentID', 'DepartmentName', 'DepartmentCode', 
+    'PatientName', 'PatientNumber', 'DoctorName', 'BedNumber', 'WardName'
+  ]);
 
   return `
     <div class="space-y-4">
@@ -3485,9 +3581,21 @@ function renderAdmissionsGrid() {
             <i data-lucide="building-2" class="w-4 h-4 text-blue-700"></i>
             <span class="text-xs font-bold text-slate-800 uppercase tracking-wider">Inpatient Department (IPD) Admissions</span>
             <span class="text-[11px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">${allAdmissions.length} admissions</span>
+            ${window._admissionDepartmentFilter !== 'ALL' ? `<span class="text-[11px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full font-semibold border border-amber-300">Filtered: ${filtered.length}</span>` : ''}
           </div>
-          <div class="flex items-center gap-2">
-            <input type="text" placeholder="Search admissions, beds, diagnosis..." value="${appState.searchTerm}" onkeyup="handleGridSearch(event)" class="text-xs border border-slate-300 rounded px-3 py-1 bg-white outline-none focus:border-blue-500 w-52">
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Department Dropdown Filter -->
+            <div class="flex items-center gap-1.5 bg-white border border-slate-300 rounded px-2.5 py-1 shadow-2xs">
+              <i data-lucide="building-2" class="w-3.5 h-3.5 text-blue-600"></i>
+              <select id="admissions-dept-filter" onchange="handleAdmissionDepartmentFilter(this.value)" class="text-xs bg-transparent outline-none font-semibold text-slate-700 cursor-pointer">
+                <option value="ALL">All Departments (${allAdmissions.length})</option>
+                ${allDepartments.map(d => {
+                  const count = allAdmissions.filter(a => a.DepartmentID === d.DepartmentID || (!a.DepartmentID && DAL.findById('Doctors', a.DoctorID)?.DepartmentID === d.DepartmentID)).length;
+                  return `<option value="${d.DepartmentID}" ${window._admissionDepartmentFilter === d.DepartmentID ? 'selected' : ''}>${d.DepartmentName} (${count})</option>`;
+                }).join('')}
+              </select>
+            </div>
+            <input type="text" placeholder="Search admissions, dept, beds..." value="${appState.searchTerm}" onkeyup="handleGridSearch(event)" class="text-xs border border-slate-300 rounded px-3 py-1 bg-white outline-none focus:border-blue-500 w-44">
             <button onclick="openNewAdmissionModal()" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold flex items-center gap-1 shadow-2xs transition">
               <i data-lucide="plus" class="w-3.5 h-3.5"></i>
               <span>New IPD Admission</span>
@@ -3499,12 +3607,33 @@ function renderAdmissionsGrid() {
           </div>
         </div>
 
+        <!-- Quick Department Filter Strip -->
+        <div class="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto text-xs custom-scrollbar">
+          <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mr-1 flex items-center gap-1 whitespace-nowrap">
+            <i data-lucide="filter" class="w-3 h-3 text-slate-400"></i> Department:
+          </span>
+          <button onclick="handleAdmissionDepartmentFilter('ALL')" class="px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition ${window._admissionDepartmentFilter === 'ALL' ? 'bg-blue-700 text-white shadow-2xs' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'}">
+            All Departments (${allAdmissions.length})
+          </button>
+          ${allDepartments.map(d => {
+            const dCount = allAdmissions.filter(a => a.DepartmentID === d.DepartmentID || (!a.DepartmentID && DAL.findById('Doctors', a.DoctorID)?.DepartmentID === d.DepartmentID)).length;
+            const isSel = window._admissionDepartmentFilter === d.DepartmentID;
+            return `
+              <button onclick="handleAdmissionDepartmentFilter('${d.DepartmentID}')" class="px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${isSel ? 'bg-blue-700 text-white shadow-2xs' : 'bg-white text-slate-700 hover:bg-blue-50 hover:text-blue-700 border border-slate-200'}">
+                <span>${d.DepartmentName}</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded-full ${isSel ? 'bg-blue-900 text-blue-100' : 'bg-slate-100 text-slate-600'}">${dCount}</span>
+              </button>
+            `;
+          }).join('')}
+        </div>
+
         <div class="flex-1 overflow-auto custom-scrollbar">
           <table class="w-full text-left text-xs border-collapse">
             <thead class="bg-[#f3f2f1] text-slate-700 uppercase tracking-wider text-[11px] sticky top-0 border-b border-slate-300 z-10 select-none">
               <tr>
                 <th class="p-2.5">Admission ID</th>
                 <th class="p-2.5">Patient</th>
+                <th class="p-2.5">Department</th>
                 <th class="p-2.5">Ward & Bed</th>
                 <th class="p-2.5">Attending Doctor</th>
                 <th class="p-2.5">Admitted Date</th>
@@ -3520,6 +3649,7 @@ function renderAdmissionsGrid() {
               ${filtered.map(a => {
                 const pat = DAL.findById('Patients', a.PatientID) || {};
                 const doc = DAL.findById('Doctors', a.DoctorID) || {};
+                const dept = DAL.findById('Departments', a.DepartmentID) || (doc.DepartmentID ? DAL.findById('Departments', doc.DepartmentID) : null) || {};
                 const bed = DAL.findById('Beds', a.BedID) || {};
                 const days = a.TotalDays || Math.max(1, Math.ceil((new Date() - new Date(a.AdmissionDate)) / (1000 * 60 * 60 * 24)));
                 const condColor = {
@@ -3549,6 +3679,11 @@ function renderAdmissionsGrid() {
                   <tr class="hover:bg-slate-50 transition">
                     <td class="p-2.5 font-mono font-bold text-blue-700">${a.AdmissionNumber || a.AdmissionID}</td>
                     <td class="p-2.5 font-semibold text-slate-900">${pat.FirstName || ''} ${pat.LastName || ''} <span class="text-[10px] text-slate-400 font-mono">(${pat.PatientNumber || ''})</span></td>
+                    <td class="p-2.5">
+                      <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-800 border border-blue-200">
+                        <i data-lucide="building-2" class="w-3 h-3 text-blue-600"></i> ${a.DepartmentName || dept.DepartmentName || a.DepartmentID || 'General Medicine'}
+                      </span>
+                    </td>
                     <td class="p-2.5">
                       <span class="inline-flex items-center gap-1 font-semibold text-slate-800">
                         <i data-lucide="bed" class="w-3.5 h-3.5 text-blue-600"></i> ${bed.BedNumber || a.BedID}
@@ -6936,9 +7071,30 @@ function handleCreateBed(e) {
   renderMainView();
 }
 
-function openNewAdmissionModal(patientId, doctorId, visitId, diagnosis, preselectedBedId) {
+function handleAdmissionDepartmentFilter(deptId) {
+  window._admissionDepartmentFilter = deptId;
+  renderMainView();
+}
+window.handleAdmissionDepartmentFilter = handleAdmissionDepartmentFilter;
+
+function handleAdmissionDoctorChange(docId) {
+  const doc = DAL.findById('Doctors', docId);
+  if (doc && doc.DepartmentID) {
+    const deptSelect = document.getElementById('adm-department');
+    if (deptSelect) deptSelect.value = doc.DepartmentID;
+  }
+}
+window.handleAdmissionDoctorChange = handleAdmissionDoctorChange;
+
+function handleAdmissionDepartmentChange(deptId) {
+  // Sync department change if necessary
+}
+window.handleAdmissionDepartmentChange = handleAdmissionDepartmentChange;
+
+function openNewAdmissionModal(patientId, doctorId, visitId, diagnosis, preselectedBedId, departmentId) {
   const patients = DAL.find('Patients');
   const doctors = DAL.find('Doctors');
+  const departments = DAL.find('Departments') || [];
   const visits = DAL.find('Visits');
   const allBeds = DAL.find('Beds');
   const admissions = DAL.find('Admissions');
@@ -6946,6 +7102,9 @@ function openNewAdmissionModal(patientId, doctorId, visitId, diagnosis, preselec
   const availableBeds = allBeds.filter(b => b.Status === 'Available' || b.BedID === preselectedBedId);
   const nextNum = `ADM-2026-${String(admissions.length + 1).padStart(4, '0')}`;
   const today = new Date().toISOString().split('T')[0];
+
+  const selectedDoc = doctorId ? DAL.findById('Doctors', doctorId) : null;
+  const initialDeptId = departmentId || (selectedDoc ? selectedDoc.DepartmentID : (departments[0] ? departments[0].DepartmentID : 'DEP-001'));
 
   openModal(`
     <div class="px-6 py-4 bg-[#002050] text-white flex justify-between items-center">
@@ -6970,8 +7129,15 @@ function openNewAdmissionModal(patientId, doctorId, visitId, diagnosis, preselec
           </select>
         </div>
         <div>
+          <label class="block font-semibold text-slate-700 mb-1">Admitting Department *</label>
+          <select id="adm-department" required onchange="handleAdmissionDepartmentChange(this.value)" class="w-full border border-slate-300 rounded p-2 font-medium bg-white">
+            <option value="">-- Choose Department --</option>
+            ${departments.map(d => `<option value="${d.DepartmentID}" ${d.DepartmentID === initialDeptId ? 'selected' : ''}>${d.DepartmentName} (${d.DepartmentCode || d.DepartmentID})</option>`).join('')}
+          </select>
+        </div>
+        <div>
           <label class="block font-semibold text-slate-700 mb-1">Attending Physician *</label>
-          <select id="adm-doctor" required class="w-full border border-slate-300 rounded p-2">
+          <select id="adm-doctor" required onchange="handleAdmissionDoctorChange(this.value)" class="w-full border border-slate-300 rounded p-2">
             <option value="">-- Choose Attending Doctor --</option>
             ${doctors.map(d => `<option value="${d.DoctorID}" ${d.DoctorID === doctorId ? 'selected' : ''}>${d.DoctorName} (${d.Specialization})</option>`).join('')}
           </select>
@@ -7063,6 +7229,7 @@ function handleCreateAdmission(e) {
   const admDate = document.getElementById('adm-date').value;
   const patientId = document.getElementById('adm-patient').value;
   const doctorId = document.getElementById('adm-doctor').value;
+  const deptId = document.getElementById('adm-department') ? document.getElementById('adm-department').value : 'DEP-001';
   const bedId = document.getElementById('adm-bed').value;
   const admType = document.getElementById('adm-type').value;
   const condition = document.getElementById('adm-condition').value;
@@ -7081,7 +7248,7 @@ function handleCreateAdmission(e) {
     AdmissionNumber: admNum,
     PatientID: patientId,
     DoctorID: doctorId,
-    DepartmentID: 'DEP-001',
+    DepartmentID: deptId,
     BedID: bedId,
     AdmissionDate: admDate,
     AdmissionType: admType,
@@ -7135,6 +7302,7 @@ function openIpdWorkflow(admissionId, stageOverride) {
 
   const pat = DAL.findById('Patients', adm.PatientID) || {};
   const doc = DAL.findById('Doctors', adm.DoctorID) || {};
+  const dept = DAL.findById('Departments', adm.DepartmentID) || (doc.DepartmentID ? DAL.findById('Departments', doc.DepartmentID) : null) || {};
   const bed = DAL.findById('Beds', adm.BedID) || {};
   const rounds = DAL.find('DailyRounds', { AdmissionID: admissionId });
 
@@ -7221,6 +7389,13 @@ function openIpdWorkflow(admissionId, stageOverride) {
 
         <div class="flex items-center gap-3 text-xs text-right">
           <div class="hidden sm:block">
+            <div class="text-[10px] text-blue-300 uppercase">Department</div>
+            <div class="font-bold text-white text-xs flex items-center gap-1 justify-end">
+              <i data-lucide="building-2" class="w-3 h-3 text-blue-300"></i>
+              ${dept.DepartmentName || adm.DepartmentID || 'General Medicine'}
+            </div>
+          </div>
+          <div class="hidden sm:block">
             <div class="text-[10px] text-blue-300 uppercase">Assigned Ward & Bed</div>
             <div class="font-bold font-mono text-white text-xs">${bed.BedNumber || 'N/A'} (${bed.WardName || 'IPD'})</div>
           </div>
@@ -7267,6 +7442,7 @@ function openIpdWorkflow(admissionId, stageOverride) {
 
 function renderIpdStage1_BedAssignment(adm, pat, doc, bed) {
   const allBeds = DAL.find('Beds');
+  const departments = DAL.find('Departments') || [];
   const availableBeds = allBeds.filter(b => b.Status === 'Available' || b.BedID === adm.BedID);
   const isDischarged = adm.Status === 'Discharged';
 
@@ -7278,7 +7454,7 @@ function renderIpdStage1_BedAssignment(adm, pat, doc, bed) {
           <i data-lucide="bed" class="w-5 h-5 text-blue-600"></i>
           <div>
             <h4 class="font-bold text-sm">Stage 1: Admission & Bed Assignment</h4>
-            <p class="text-[11px] text-blue-800">Verify patient registration, ward allocation, daily room rate, and initial admission baseline condition.</p>
+            <p class="text-[11px] text-blue-800">Verify patient registration, department, ward allocation, daily room rate, and initial admission baseline condition.</p>
           </div>
         </div>
         <span class="px-2.5 py-1 bg-blue-200 text-blue-900 rounded font-semibold text-[11px]">${adm.AdmissionType || 'Inpatient Admission'}</span>
@@ -7288,11 +7464,17 @@ function renderIpdStage1_BedAssignment(adm, pat, doc, bed) {
         <!-- Bed & Ward Allocation Card -->
         <div class="bg-white p-5 rounded-lg border border-slate-200 shadow-2xs space-y-4">
           <h5 class="font-bold text-slate-800 border-b pb-2 flex items-center justify-between">
-            <span class="flex items-center gap-2"><i data-lucide="map-pin" class="w-4 h-4 text-blue-600"></i> Hospital Bed & Ward Assignment</span>
+            <span class="flex items-center gap-2"><i data-lucide="map-pin" class="w-4 h-4 text-blue-600"></i> Hospital Department, Bed & Ward Assignment</span>
             <span class="text-xs font-mono font-bold text-emerald-700">Rate: $${parseFloat(bed.DailyRate || 120).toFixed(0)}/day</span>
           </h5>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Admitting Department *</label>
+              <select id="stage1-department" required ${isDischarged ? 'disabled' : ''} class="w-full border border-slate-300 rounded p-2 font-medium bg-white">
+                ${departments.map(d => `<option value="${d.DepartmentID}" ${d.DepartmentID === (adm.DepartmentID || doc.DepartmentID) ? 'selected' : ''}>${d.DepartmentName} (${d.DepartmentCode || d.DepartmentID})</option>`).join('')}
+              </select>
+            </div>
             <div>
               <label class="block font-semibold text-slate-700 mb-1">Assigned Bed (Transfer if needed) *</label>
               <select id="stage1-bed" required ${isDischarged ? 'disabled' : ''} class="w-full border border-slate-300 rounded p-2 font-medium">
@@ -7347,6 +7529,7 @@ function handleUpdateBedAssignment(e, admissionId) {
   e.preventDefault();
   const adm = DAL.findById('Admissions', admissionId);
   const oldBedId = adm.BedID;
+  const newDeptId = document.getElementById('stage1-department') ? document.getElementById('stage1-department').value : adm.DepartmentID;
   const newBedId = document.getElementById('stage1-bed').value;
   const cond = document.getElementById('stage1-condition').value;
   const date = document.getElementById('stage1-date').value;
@@ -7360,6 +7543,7 @@ function handleUpdateBedAssignment(e, admissionId) {
   }
 
   DAL.update('Admissions', admissionId, {
+    DepartmentID: newDeptId,
     BedID: newBedId,
     CurrentCondition: cond,
     AdmissionDate: date,
