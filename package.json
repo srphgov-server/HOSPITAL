@@ -1,0 +1,31 @@
+{
+  "name": "dynamics-healthcare-system",
+  "version": "1.0.0",
+  "description": "Microsoft Dynamics 365 Model-driven Healthcare Management System with OPD, IPD, Emergency, Operation Theater & CSSD Modules",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/integration_test.js",
+    "audit": "node tests/system_audit.js",
+    "docker:build": "docker build -t dynamics-healthcare .",
+    "docker:run": "docker run -d -p 3000:3000 --name healthcare-app dynamics-healthcare",
+    "docker:compose": "docker compose up -d"
+  },
+  "keywords": [
+    "dynamics-365",
+    "healthcare",
+    "emr",
+    "hospital-management",
+    "opd",
+    "ipd",
+    "emergency-room",
+    "operation-theater",
+    "cssd",
+    "docker"
+  ],
+  "author": "Healthcare Solutions Architecture",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

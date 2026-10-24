@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sieam Reap Provincial Referral Hospital | Healthcare Management System Prototype</title>
+  
+  <!-- DNS Prefetching & Resource Hints for Fast Asset Loading -->
+  <link rel="dns-prefetch" href="https://fonts.googleapis.com">
+  <link rel="dns-prefetch" href="https://fonts.gstatic.com">
+  <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+  <link rel="dns-prefetch" href="https://unpkg.com">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Google Fonts: Inter / Segoe UI lookalike + Kantumruy Pro & Battambang for Khmer -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Battambang:wght@400;700&family=Inter:wght@300;400;500;600;700&family=Kantumruy+Pro:ital,wght@0,300..700;1,300..700&family=Segoe+UI:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    * {
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    :root {
+      --d365-nav-bg: #002050;
+      --d365-blue: #0078d4;
+      --d365-blue-hover: #106ebe;
+      --d365-ribbon-bg: #f8f9fa;
+      --d365-border: #edebe9;
+      --d365-text: #201f1e;
+      --d365-subtext: #605e5c;
+      --d365-active-item: #e1dfdd;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      font-family: 'Segoe UI', 'Inter', 'Kantumruy Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--d365-text);
+      background-color: #f3f2f1;
+    }
+    #top-header { flex-shrink: 0; height: 3rem; }
+    #command-ribbon { flex-shrink: 0; min-height: 2.75rem; }
+    #demo-banner { flex-shrink: 0; }
+    #main-workspace-area {
+      flex: 1 1 0%;
+      display: flex;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+    #sidebar {
+      flex-shrink: 0;
+      width: 15rem;
+    }
+    #main-content {
+      flex: 1 1 0%;
+      min-width: 0;
+      min-height: 0;
+      overflow-y: auto;
+    }
+    body.lang-kh {
+      font-family: 'Kantumruy Pro', 'Battambang', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .lang-kh .khmer-heading {
+      font-family: 'Kantumruy Pro', sans-serif;
+      line-height: 1.5;
+    }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #c8c6c4; border-radius: 3px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #a19f9d; }
+    
+    /* Dynamics BPF Chevrons */
+    .bpf-step {
+      position: relative;
+      background: #f3f2f1;
+      clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%, 14px 50%);
+    }
+    .bpf-step:first-child {
+      clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%);
+    }
+    .bpf-step.active {
+      background: #0078d4;
+      color: white;
+    }
+    .bpf-step.completed {
+      background: #107c41;
+      color: white;
+    }
+    
+    /* Print Styles */
+    @media print {
+      #top-header, #command-ribbon, #sidebar, #demo-banner, .no-print { display: none !important; }
+      main { padding: 0 !important; background: white !important; }
+      body { background: white !important; }
+    }
+  </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden select-none">
+
+  <!-- ================= DYNAMICS 365 TOP HEADER BAR ================= -->
+  <header id="top-header" class="h-12 bg-[#002050] text-white flex items-center justify-between px-3 z-30 shadow-md">
+    <!-- Left: App Launcher & Title -->
+    <div class="flex items-center gap-3">
+      <button onclick="toggleSidebar()" class="p-1.5 hover:bg-white/10 rounded transition text-slate-200 hover:text-white" title="App Launcher">
+        <i data-lucide="grid" class="w-5 h-5"></i>
+      </button>
+      <div class="flex items-center gap-2">
+        <span id="header-hospital-name" data-i18n="hospital_name" class="font-semibold text-sm tracking-wide text-white">Sieam Reap Provincial Referral Hospital</span>
+        <span class="text-white/40 text-xs">|</span>
+        <div class="flex items-center gap-1.5">
+          <span id="header-system-title" data-i18n="system_title" class="text-sm font-normal text-slate-100 font-medium">Healthcare Management System</span>
+          <span id="header-proto-badge" data-i18n="prototype_badge" class="bg-blue-600/80 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded text-white border border-blue-400/30">Prototype</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center: Global Search Bar -->
+    <div class="flex-1 max-w-xl mx-4 relative hidden md:block">
+      <div class="relative flex items-center">
+        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none"></i>
+        <input type="text" id="global-search-input" onkeyup="handleGlobalSearch(event)" 
+               data-i18n-placeholder="search_placeholder"
+               placeholder="Search records (Patient name, MRN, Doctor, Invoice, Appointment #)..." 
+               class="w-full bg-white/10 hover:bg-white/15 focus:bg-white text-slate-100 focus:text-slate-900 placeholder-slate-300 focus:placeholder-slate-400 text-xs rounded pl-9 pr-8 py-1.5 transition outline-none border border-transparent focus:border-blue-400 shadow-inner">
+        <button onclick="clearGlobalSearch()" id="clear-search-btn" class="absolute right-2 text-slate-300 hover:text-white hidden">
+          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+      <!-- Global Search Results Dropdown -->
+      <div id="search-results-dropdown" class="absolute left-0 right-0 top-10 bg-white text-slate-800 rounded-md shadow-2xl border border-slate-200 hidden max-h-96 overflow-y-auto custom-scrollbar z-50">
+        <!-- Injected search results -->
+      </div>
+    </div>
+
+    <!-- Right: Quick Create, Language Switcher, Role Switcher, Guided Tour, Cloud Status & Profile -->
+    <div class="flex items-center gap-2">
+      <!-- Interactive Guided Tour Button -->
+      <button onclick="startGuidedDemo()" class="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold px-2.5 py-1.5 rounded shadow-sm border border-emerald-400/30 transition">
+        <i data-lucide="play-circle" class="w-3.5 h-3.5"></i>
+        <span id="demo-tour-text" data-i18n="demo_tour_btn" class="hidden sm:inline">Run Demo Tour</span>
+      </button>
+
+      <!-- Quick Create (+) Menu -->
+      <div class="relative">
+        <button onclick="toggleQuickCreateMenu()" class="p-1.5 hover:bg-white/10 rounded transition text-slate-200 hover:text-white flex items-center gap-1" title="Quick Create Record">
+          <i data-lucide="plus" class="w-4 h-4"></i>
+          <span id="quick-create-text" data-i18n="quick_create" class="text-xs hidden lg:inline">Quick Create</span>
+          <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+        </button>
+        <!-- Quick Create Dropdown Menu -->
+        <div id="quick-create-dropdown" class="absolute right-0 top-10 w-52 bg-white text-slate-800 rounded shadow-xl border border-slate-200 py-1 hidden z-50">
+          <button onclick="quickCreate('patient')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="user-plus" class="w-3.5 h-3.5 text-blue-600"></i> <span data-i18n="qc_patient">New Patient</span></button>
+          <button onclick="quickCreate('appointment')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="calendar-plus" class="w-3.5 h-3.5 text-indigo-600"></i> <span data-i18n="qc_appointment">New Appointment</span></button>
+          <button onclick="quickCreate('visit')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="stethoscope" class="w-3.5 h-3.5 text-teal-600"></i> <span data-i18n="qc_visit">Start OPD Process</span></button>
+          <button onclick="quickCreate('admission')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="hotel" class="w-3.5 h-3.5 text-indigo-700"></i> <span data-i18n="qc_admission">New IPD Admission</span></button>
+          <button onclick="quickCreate('emergency')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="siren" class="w-3.5 h-3.5 text-rose-600"></i> <span data-i18n="qc_emergency">New ER Triage Intake</span></button>
+          <button onclick="quickCreate('prescription')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="file-plus-2" class="w-3.5 h-3.5 text-amber-600"></i> <span data-i18n="qc_prescription">New Prescription</span></button>
+          <button onclick="quickCreate('lab_result')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="flask-conical" class="w-3.5 h-3.5 text-purple-600"></i> <span data-i18n="qc_lab_result">New Lab Result</span></button>
+          <button onclick="quickCreate('payment')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="credit-card" class="w-3.5 h-3.5 text-emerald-600"></i> <span data-i18n="qc_payment">Record Payment</span></button>
+          <button onclick="quickCreate('followup')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="bell-ring" class="w-3.5 h-3.5 text-rose-600"></i> <span data-i18n="qc_followup">New Follow-up</span></button>
+          <button onclick="quickCreate('surgery')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="scissors" class="w-3.5 h-3.5 text-rose-600"></i> <span data-i18n="qc_surgery">Schedule Surgery / OT</span></button>
+          <button onclick="quickCreate('sterile_tray')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-emerald-600"></i> <span data-i18n="qc_sterile_tray">New Sterile Tray (CSSD)</span></button>
+          <button onclick="quickCreate('user')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="user-plus" class="w-3.5 h-3.5 text-slate-700"></i> <span data-i18n="qc_user">New User</span></button>
+        </div>
+      </div>
+
+      <!-- Language Switcher (Khmer 🇰🇭 / English 🇬🇧) -->
+      <div class="flex items-center bg-white/10 hover:bg-white/15 rounded-md px-1.5 py-1 gap-1.5 border border-white/15 transition shadow-xs">
+        <i data-lucide="globe" class="w-3.5 h-3.5 text-amber-300"></i>
+        <div class="flex items-center bg-black/25 rounded p-0.5 gap-0.5">
+          <button type="button" id="lang-btn-en" onclick="handleLanguageSwitch('en')" title="Switch to English" class="px-2 py-0.5 rounded text-[11px] font-bold transition bg-blue-600 text-white shadow-xs">
+            🇬🇧 EN
+          </button>
+          <button type="button" id="lang-btn-kh" onclick="handleLanguageSwitch('kh')" title="ប្តូរទៅ ភាសាខ្មែរ (Khmer)" class="px-2 py-0.5 rounded text-[11px] font-bold transition text-slate-300 hover:text-white">
+            🇰🇭 ខ្មែរ
+          </button>
+        </div>
+        <select id="language-selector" onchange="handleLanguageSwitch(this.value)" class="sr-only" aria-label="Select Language">
+          <option value="en">English</option>
+          <option value="kh">ភាសាខ្មែរ</option>
+        </select>
+      </div>
+
+      <!-- Role Persona Switcher -->
+      <div class="flex items-center bg-white/10 rounded px-2 py-1 gap-1.5 border border-white/10">
+        <i data-lucide="shield-check" class="w-3.5 h-3.5 text-cyan-300"></i>
+        <span data-i18n="role_label" class="text-[11px] text-slate-300 hidden xl:inline">Role:</span>
+        <select id="role-selector" onchange="handleRoleSwitch(this.value)" class="bg-transparent text-xs text-white font-medium outline-none cursor-pointer">
+          <option value="Administrator" class="text-slate-900">Administrator</option>
+          <option value="Receptionist" class="text-slate-900">Receptionist</option>
+          <option value="Doctor" class="text-slate-900">Doctor</option>
+          <option value="Nurse" class="text-slate-900">Nurse</option>
+          <option value="Pharmacist" class="text-slate-900">Pharmacist</option>
+          <option value="Accountant" class="text-slate-900">Accountant</option>
+        </select>
+      </div>
+
+      <!-- Google Sheets Data Source & Sync Modal Trigger -->
+      <button onclick="openSyncSettingsModal()" class="flex items-center gap-1 p-1.5 hover:bg-white/10 rounded transition text-slate-200 hover:text-white" title="Google Sheets Integration Settings">
+        <i data-lucide="sheet" class="w-4 h-4 text-emerald-400"></i>
+        <span id="sync-status-indicator" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+      </button>
+
+      <!-- User Profile Badge -->
+      <div class="flex items-center gap-2 pl-2 border-l border-white/10">
+        <div id="user-avatar-badge" class="w-7 h-7 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center border border-white/20">
+          A
+        </div>
+        <div class="hidden lg:block text-left leading-tight">
+          <p id="user-name-display" class="text-xs font-semibold text-white">Alex Mercer</p>
+          <p id="user-role-display" class="text-[10px] text-cyan-300">Administrator</p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= DYNAMICS 365 COMMAND RIBBON ================= -->
+  <div id="command-ribbon" class="h-11 bg-[#f8f9fa] border-b border-[#edebe9] flex items-center justify-between px-4 z-20">
+    <!-- Contextual Action Buttons -->
+    <div id="ribbon-actions" class="flex items-center gap-1 overflow-x-auto custom-scrollbar py-1">
+      <!-- Injected dynamically based on current entity or view -->
+    </div>
+    
+    <!-- View Selector / Breadcrumbs -->
+    <div class="flex items-center gap-2 text-xs text-slate-500 font-medium">
+      <span id="ribbon-breadcrumb" class="hidden sm:inline-flex items-center gap-1">
+        <span class="text-slate-400">Healthcare</span>
+        <i data-lucide="chevron-right" class="w-3 h-3 text-slate-400"></i>
+        <span id="breadcrumb-entity" class="text-slate-700 font-semibold">Patients</span>
+      </span>
+      <button onclick="refreshCurrentView()" class="p-1.5 hover:bg-[#e1dfdd] rounded text-slate-600 hover:text-slate-900 transition" title="Refresh Data">
+        <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= DEMO BANNER ================= -->
+  <div id="demo-banner" class="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white px-4 py-1.5 text-xs flex items-center justify-between border-b border-blue-800">
+    <div class="flex items-center gap-2">
+      <span data-i18n="proto_notice" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500 text-white">PROTOTYPE NOTICE</span>
+      <span data-i18n="proto_desc" class="text-slate-200">Sieam Reap Provincial Referral Hospital - Model-driven Architecture Prototype for Healthcare Workflows. Backed by Google Sheets / Dataverse-ready Repository. All patient data fictional.</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <button onclick="startGuidedDemo()" class="underline text-cyan-300 hover:text-white font-medium flex items-center gap-1">
+        <i data-lucide="fast-forward" class="w-3 h-3"></i> <span data-i18n="demo_tour_link">Step-by-Step Demo Tour</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= MAIN WORKSPACE AREA ================= -->
+  <div id="main-workspace-area" class="flex-1 flex min-w-0 overflow-hidden">
+    
+    <!-- Left Navigation Sitemap (Dynamics 365 Model-driven Navigation) -->
+    <aside id="sidebar" class="w-60 bg-[#f3f2f1] border-r border-[#edebe9] flex flex-col justify-between transition-all duration-200 z-20 select-none">
+      <div class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-4">
+        
+        <!-- Sitemap Group: Workplace -->
+        <div>
+          <p data-i18n="group_workplace" class="px-2 pb-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Workplace</p>
+          <div class="space-y-0.5">
+            <button onclick="navigateTo('dashboard')" id="nav-dashboard" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="layout-dashboard" class="w-4 h-4 text-blue-600"></i>
+              <span data-i18n="nav_dashboard">Dashboard</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sitemap Group: Clinical Care -->
+        <div>
+          <p data-i18n="group_clinical_care" class="px-2 pb-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Clinical Care</p>
+          <div class="space-y-0.5">
+            <button onclick="navigateTo('patients')" id="nav-patients" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="users" class="w-4 h-4 text-sky-600"></i>
+              <span data-i18n="nav_patients">Patients</span>
+            </button>
+            <button onclick="navigateTo('appointments')" id="nav-appointments" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="calendar" class="w-4 h-4 text-indigo-600"></i>
+              <span data-i18n="nav_appointments">Appointments</span>
+            </button>
+            <button onclick="navigateTo('visits')" id="nav-visits" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="stethoscope" class="w-4 h-4 text-teal-600"></i>
+              <span data-i18n="nav_visits">OPD Encounters & Workflow</span>
+            </button>
+            <button onclick="navigateTo('admissions')" id="nav-admissions" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="hotel" class="w-4 h-4 text-indigo-700"></i>
+              <span data-i18n="nav_admissions">Inpatient (IPD) Admissions</span>
+            </button>
+            <button onclick="navigateTo('emergency')" id="nav-emergency" class="nav-btn w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <div class="flex items-center gap-2.5">
+                <i data-lucide="siren" class="w-4 h-4 text-rose-600"></i>
+                <span data-i18n="nav_emergency" class="font-semibold text-rose-950">Emergency (ER / ED)</span>
+              </div>
+              <span id="nav-er-badge" class="px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded-full font-bold text-[10px] animate-pulse">4 Active</span>
+            </button>
+            <button onclick="navigateTo('emergency_bays')" id="nav-emergency_bays" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="shield-alert" class="w-4 h-4 text-amber-600"></i>
+              <span data-i18n="nav_emergency_bays">ER Trauma & Bays</span>
+            </button>
+            <button onclick="navigateTo('beds')" id="nav-beds" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="bed-double" class="w-4 h-4 text-purple-700"></i>
+              <span data-i18n="nav_beds">Beds & Ward Management</span>
+            </button>
+            <button onclick="navigateTo('medical_history')" id="nav-medical_history" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="clipboard-list" class="w-4 h-4 text-emerald-600"></i>
+              <span data-i18n="nav_medical_history">Medical History</span>
+            </button>
+            <button onclick="navigateTo('diagnoses')" id="nav-diagnoses" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="activity" class="w-4 h-4 text-rose-600"></i>
+              <span data-i18n="nav_diagnoses">Diagnoses</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sitemap Group: Surgical & Sterile Services -->
+        <div>
+          <p data-i18n="group_surgical_sterile" class="px-2 pb-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Surgical & Sterile</p>
+          <div class="space-y-0.5">
+            <button onclick="navigateTo('surgeries')" id="nav-surgeries" class="nav-btn w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <div class="flex items-center gap-2.5">
+                <i data-lucide="scissors" class="w-4 h-4 text-rose-600"></i>
+                <span data-i18n="nav_surgeries" class="font-semibold text-slate-900">Operation Theater (OT)</span>
+              </div>
+              <span id="nav-ot-badge" class="px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded-full font-bold text-[10px] animate-pulse">1 In OR</span>
+            </button>
+            <button onclick="navigateTo('sterile_processing')" id="nav-sterile_processing" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="sparkles" class="w-4 h-4 text-emerald-600"></i>
+              <span data-i18n="nav_sterile_processing">CSSD & Sterile Sets</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sitemap Group: Pharmacy & Diagnostics -->
+        <div>
+          <p data-i18n="group_pharmacy_labs" class="px-2 pb-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Pharmacy & Labs</p>
+          <div class="space-y-0.5">
+            <button onclick="navigateTo('prescriptions')" id="nav-prescriptions" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="file-text" class="w-4 h-4 text-amber-600"></i>
+              <span data-i18n="nav_prescriptions">Prescriptions</span>
+            </button>
+            <button onclick="navigateTo('medications')" id="nav-medications" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="pill" class="w-4 h-4 text-orange-600"></i>
+              <span data-i18n="nav_medications">Medications</span>
+            </button>
+            <button onclick="navigateTo('laboratory_tests')" id="nav-laboratory_tests" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="flask-conical" class="w-4 h-4 text-purple-600"></i>
+              <span data-i18n="nav_laboratory_tests">Laboratory Tests</span>
+            </button>
+            <button onclick="navigateTo('laboratory_results')" id="nav-laboratory_results" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="microscope" class="w-4 h-4 text-violet-600"></i>
+              <span data-i18n="nav_laboratory_results">Laboratory Results</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sitemap Group: Financials -->
+        <div>
+          <p data-i18n="group_financials" class="px-2 pb-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Financials</p>
+          <div class="space-y-0.5">
+            <button onclick="navigateTo('billing')" id="nav-billing" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="receipt" class="w-4 h-4 text-emerald-700"></i>
+              <span data-i18n="nav_billing">Billing & Invoices</span>
+            </button>
+            <button onclick="navigateTo('payments')" id="nav-payments" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="credit-card" class="w-4 h-4 text-teal-700"></i>
+              <span data-i18n="nav_payments">Payments</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sitemap Group: Management & System -->
+        <div>
+          <p data-i18n="group_management" class="px-2 pb-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Management</p>
+          <div class="space-y-0.5">
+            <button onclick="navigateTo('doctors')" id="nav-doctors" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="user-check" class="w-4 h-4 text-blue-700"></i>
+              <span data-i18n="nav_doctors">Doctors</span>
+            </button>
+            <button onclick="navigateTo('departments')" id="nav-departments" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="building-2" class="w-4 h-4 text-cyan-700"></i>
+              <span data-i18n="nav_departments">Departments</span>
+            </button>
+            <button onclick="navigateTo('followups')" id="nav-followups" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="bell-ring" class="w-4 h-4 text-rose-600"></i>
+              <span data-i18n="nav_followups">Follow-ups</span>
+            </button>
+            <button onclick="navigateTo('reports')" id="nav-reports" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="bar-chart-3" class="w-4 h-4 text-slate-700"></i>
+              <span data-i18n="nav_reports">Reports</span>
+            </button>
+            <button onclick="navigateTo('users')" id="nav-users" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="user-cog" class="w-4 h-4 text-slate-700"></i>
+              <span data-i18n="nav_users">Users</span>
+            </button>
+            <button onclick="navigateTo('security_roles')" id="nav-security_roles" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="shield-check" class="w-4 h-4 text-cyan-800"></i>
+              <span data-i18n="nav_security_roles">Security Roles</span>
+            </button>
+            <button onclick="navigateTo('administration')" id="nav-administration" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="settings" class="w-4 h-4 text-slate-600"></i>
+              <span data-i18n="nav_administration">Administration</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer Area Switcher -->
+      <div class="p-2 border-t border-[#edebe9] bg-[#f8f9fa] flex items-center justify-between text-xs text-slate-500">
+        <span class="flex items-center gap-1.5">
+          <i data-lucide="layers" class="w-3.5 h-3.5 text-blue-600"></i>
+          <span data-i18n="area_healthcare" class="font-semibold text-slate-700">Area: Healthcare</span>
+        </span>
+        <button onclick="openSyncSettingsModal()" class="hover:text-blue-600 p-1" title="Data Connection Settings">
+          <i data-lucide="database" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content Container -->
+    <main id="main-content" class="flex-1 overflow-y-auto custom-scrollbar bg-[#f3f2f1] p-4">
+      <!-- Injected dynamically by app.js router -->
+    </main>
+
+  </div>
+
+  <!-- ================= MODAL CONTAINER ================= -->
+  <div id="modal-backdrop" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-3 sm:p-5">
+    <div id="modal-container" class="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[95vh] flex flex-col overflow-hidden border border-slate-300 animate-in fade-in zoom-in duration-100">
+      <!-- Injected modal content -->
+    </div>
+  </div>
+
+  <!-- ================= GUIDED DEMO STEP-BY-STEP OVERLAY ================= -->
+  <div id="guided-tour-panel" class="fixed bottom-6 right-6 w-96 bg-white rounded-xl shadow-2xl border-2 border-blue-600 p-4 z-40 hidden animate-in slide-in-from-bottom-5">
+    <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+      <div class="flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse"></span>
+        <h4 class="font-bold text-xs text-slate-900 uppercase tracking-wider">Guided Healthcare Demo</h4>
+      </div>
+      <button onclick="stopGuidedDemo()" class="text-slate-400 hover:text-slate-600">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div id="guided-tour-content" class="py-3 text-xs text-slate-700 space-y-2">
+      <!-- Dynamic tour content -->
+    </div>
+    <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+      <span id="guided-tour-counter" class="text-[11px] font-semibold text-slate-400">Step 1 of 7</span>
+      <div class="flex gap-2">
+        <button onclick="prevDemoStep()" id="btn-tour-prev" class="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold">Prev</button>
+        <button onclick="nextDemoStep()" id="btn-tour-next" class="px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1">Next <i data-lucide="arrow-right" class="w-3 h-3"></i></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= DYNAMICS TOAST NOTIFICATION ================= -->
+  <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 transform transition-all duration-200 translate-y-20 opacity-0 flex items-center gap-2.5 px-4 py-2.5 rounded shadow-lg text-xs font-semibold"></div>
+
+  <!-- Core Scripts -->
+  <script src="i18n.js?v=20261024"></script>
+  <script src="app.js?v=20261024"></script>
+</body>
+</html>

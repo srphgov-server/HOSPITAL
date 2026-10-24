@@ -1,0 +1,15 @@
+# Docker build ignore patterns
+.git/
+.gitignore
+.gemini/
+scratch/
+docs/
+*.md
+!README.md
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+node_modules/
+.DS_Store
+Thumbs.db
