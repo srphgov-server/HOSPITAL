@@ -53,6 +53,7 @@ const i18n = {
       nav_payments: "Payments",
       nav_doctors: "Doctors",
       nav_departments: "Departments",
+      nav_services: "Service List & Fees",
       nav_followups: "Follow-ups",
       nav_reports: "Reports",
       nav_users: "Users",
@@ -72,6 +73,7 @@ const i18n = {
       qc_surgery: "Schedule Surgery / OT",
       qc_sterile_tray: "New Sterile Tray (CSSD)",
       qc_user: "New User",
+      qc_service: "New Service / Fee",
 
       // Ribbon Actions
       ribbon_save_close: "Save & Close",
@@ -144,6 +146,20 @@ const i18n = {
       medication: "Medication",
       dosage: "Dosage",
       instructions: "Instructions",
+      case_type: "Case Type",
+      new_case: "New Case (ករណីថ្មី)",
+      old_case: "Old Case (ករណីចាស់)",
+      new_case_short: "New Case",
+      old_case_short: "Old Case",
+      new_case_desc: "First visit for this condition / initial OPD presentation",
+      old_case_desc: "Patient used to come for visit / follow-up / repeat consultation",
+      returning_patient: "Returning Patient (Used to visit)",
+      first_time_patient: "First-time Patient",
+      past_visits: "Previous Visits",
+      prior_encounters: "Prior Clinical Encounters",
+      filter_all_cases: "All Cases",
+      filter_new_cases: "New Cases",
+      filter_old_cases: "Old Cases (Re-visits)",
 
       // Statuses
       status_active: "Active",
@@ -223,6 +239,7 @@ const i18n = {
       nav_payments: "ការទូទាត់ប្រាក់",
       nav_doctors: "គ្រូពេទ្យ",
       nav_departments: "ផ្នែក / ដេប៉ាតឺម៉ង់",
+      nav_services: "បញ្ជីសេវា & តម្លៃសេវា",
       nav_followups: "ការតាមដានបន្ត",
       nav_reports: "របាយការណ៍",
       nav_users: "អ្នកប្រើប្រាស់",
@@ -242,6 +259,7 @@ const i18n = {
       qc_surgery: "កាលវិភាគវះកាត់ (OT)",
       qc_sterile_tray: "កញ្ចប់ឧបករណ៍មាប់មគថ្មី",
       qc_user: "អ្នកប្រើប្រាស់ថ្មី",
+      qc_service: "សេវាព្យាបាលថ្មី",
 
       // Ribbon Actions
       ribbon_save_close: "រក្សាទុក & បិទ",
@@ -314,6 +332,20 @@ const i18n = {
       medication: "ឈ្មោះថ្នាំ",
       dosage: "កម្រិតថ្នាំ",
       instructions: "ការណែនាំប្រើប្រាស់",
+      case_type: "ប្រភេទករណី",
+      new_case: "ករណីថ្មី (New Case)",
+      old_case: "ករណីចាស់ (Old Case)",
+      new_case_short: "ករណីថ្មី",
+      old_case_short: "ករណីចាស់",
+      new_case_desc: "មកពិនិត្យលើកដំបូងសម្រាប់បញ្ហាសុខភាពនេះ",
+      old_case_desc: "អ្នកជំងឺធ្លាប់មកពិនិត្យពីមុន / មកពិនិត្យតាមដានបន្ត",
+      returning_patient: "អ្នកជំងឺធ្លាប់មកពិនិត្យពីមុន",
+      first_time_patient: "អ្នកជំងឺមកលើកដំបូង",
+      past_visits: "ប្រវត្តិការពិនិត្យពីមុន",
+      prior_encounters: "កំណត់ត្រាការពិនិត្យកន្លងមក",
+      filter_all_cases: "ករណីទាំងអស់",
+      filter_new_cases: "ករណីថ្មី",
+      filter_old_cases: "ករណីចាស់ (ធ្លាប់មកពិនិត្យ)",
 
       // Statuses
       status_active: "សកម្ម",

@@ -40,7 +40,7 @@ const USER_PERSONAS = {
     avatar: 'A',
     roleName: 'System Administrator',
     color: 'bg-slate-700',
-    allowedViews: ['dashboard', 'patients', 'appointments', 'visits', 'emergency', 'emergency_bays', 'admissions', 'beds', 'surgeries', 'sterile_processing', 'medical_history', 'diagnoses', 'prescriptions', 'medications', 'laboratory_tests', 'laboratory_results', 'billing', 'payments', 'doctors', 'departments', 'followups', 'reports', 'users', 'security_roles', 'administration']
+    allowedViews: ['dashboard', 'patients', 'appointments', 'visits', 'emergency', 'emergency_bays', 'admissions', 'beds', 'surgeries', 'sterile_processing', 'medical_history', 'diagnoses', 'prescriptions', 'medications', 'laboratory_tests', 'laboratory_results', 'billing', 'payments', 'doctors', 'departments', 'services', 'followups', 'reports', 'users', 'security_roles', 'administration']
   },
   Receptionist: {
     fullName: 'Lisa Hernandez',
@@ -48,7 +48,7 @@ const USER_PERSONAS = {
     avatar: 'L',
     roleName: 'Front Desk Receptionist',
     color: 'bg-sky-600',
-    allowedViews: ['dashboard', 'patients', 'appointments', 'visits', 'emergency', 'emergency_bays', 'admissions', 'beds', 'surgeries', 'billing', 'payments']
+    allowedViews: ['dashboard', 'patients', 'appointments', 'visits', 'emergency', 'emergency_bays', 'admissions', 'beds', 'surgeries', 'services', 'billing', 'payments']
   },
   Doctor: {
     fullName: 'Dr. Sarah Jenkins, MD',
@@ -57,7 +57,7 @@ const USER_PERSONAS = {
     roleName: 'Attending Physician',
     doctorId: 'DOC-001',
     color: 'bg-blue-600',
-    allowedViews: ['dashboard', 'patients', 'appointments', 'visits', 'emergency', 'emergency_bays', 'admissions', 'beds', 'surgeries', 'sterile_processing', 'medical_history', 'diagnoses', 'prescriptions', 'laboratory_results', 'followups']
+    allowedViews: ['dashboard', 'patients', 'appointments', 'visits', 'emergency', 'emergency_bays', 'admissions', 'beds', 'surgeries', 'sterile_processing', 'medical_history', 'diagnoses', 'prescriptions', 'laboratory_results', 'services', 'followups']
   },
   Nurse: {
     fullName: 'Joyce Chen, RN',
@@ -65,7 +65,7 @@ const USER_PERSONAS = {
     avatar: 'J',
     roleName: 'Clinical Triage Nurse',
     color: 'bg-teal-600',
-    allowedViews: ['dashboard', 'patients', 'appointments', 'visits', 'emergency', 'emergency_bays', 'admissions', 'beds', 'surgeries', 'sterile_processing', 'laboratory_results', 'followups']
+    allowedViews: ['dashboard', 'patients', 'appointments', 'visits', 'emergency', 'emergency_bays', 'admissions', 'beds', 'surgeries', 'sterile_processing', 'laboratory_results', 'services', 'followups']
   },
   Pharmacist: {
     fullName: 'Todd Bradley, PharmD',
@@ -81,7 +81,7 @@ const USER_PERSONAS = {
     avatar: 'R',
     roleName: 'Billing & Cashier Specialist',
     color: 'bg-emerald-600',
-    allowedViews: ['dashboard', 'billing', 'payments', 'reports', 'admissions']
+    allowedViews: ['dashboard', 'billing', 'payments', 'reports', 'admissions', 'services']
   }
 };
 
@@ -194,6 +194,28 @@ const DAL = {
           this.db.OperationTheaters = sample.OperationTheaters;
           this.db.Surgeries = sample.Surgeries;
           this.db.SterileTrays = sample.SterileTrays;
+          this.persist();
+        }
+
+        // Ensure Services table (Hospital Fee Schedule: IPD Fees, Investigation Fees, etc.) exists in active storage
+        if (!this.db.Services || this.db.Services.length === 0) {
+          const sample = this.generateSampleData();
+          this.db.Services = sample.Services;
+          this.persist();
+        }
+
+        // Ensure OPD Visits have CaseType ('New Case' vs 'Old Case') in active storage
+        if (this.db.Visits && this.db.Visits.some(v => !v.CaseType)) {
+          const patientSeen = {};
+          this.db.Visits.forEach(v => {
+            if (patientSeen[v.PatientID]) {
+              v.CaseType = 'Old Case';
+              v.PreviousVisitID = v.PreviousVisitID || patientSeen[v.PatientID];
+            } else {
+              v.CaseType = 'New Case';
+              patientSeen[v.PatientID] = v.VisitID;
+            }
+          });
           this.persist();
         }
       } catch (e) {
@@ -320,7 +342,8 @@ const DAL = {
       EmergencyBays: 'BayID',
       OperationTheaters: 'TheaterID',
       Surgeries: 'SurgeryID',
-      SterileTrays: 'TrayID'
+      SterileTrays: 'TrayID',
+      Services: 'ServiceID'
     };
     return pkMap[entityName] || 'id';
   },
@@ -496,12 +519,19 @@ const DAL = {
 
     const visits = [];
     const vitals = [];
+    const patientVisitTracker = {};
     for (let i = 1; i <= 22; i++) {
+      const isRepeatIndex = i === 13 || i === 15 || i === 17 || i === 19 || i === 21 || i === 22;
       const apt = appointments[i - 1];
-      const pat = patients.find(p => p.PatientID === apt.PatientID) || patients[0];
+      const pat = isRepeatIndex ? patients[(i * 3) % 6] : (patients.find(p => p.PatientID === apt.PatientID) || patients[0]);
       const visitId = 'VIS-' + String(i).padStart(3, '0');
       const vDate = apt.AppointmentDate;
       const vStatus = i <= 18 ? 'Completed' : (i === 19 ? 'In Consultation' : 'Arrived');
+
+      const priorVisitId = patientVisitTracker[pat.PatientID] || null;
+      const isOldCase = !!priorVisitId;
+      const caseType = isOldCase ? 'Old Case' : 'New Case';
+      patientVisitTracker[pat.PatientID] = visitId;
 
       visits.push({
         VisitID: visitId,
@@ -509,8 +539,10 @@ const DAL = {
         AppointmentID: apt.AppointmentID,
         DoctorID: apt.DoctorID,
         VisitDate: vDate,
-        ChiefComplaint: pat.MedicalConditions ? 'Follow-up regarding ' + pat.MedicalConditions : 'Regular checkup evaluation',
-        ClinicalNotes: 'Patient examined in clinic. Alert and oriented. Cardiovascular exam regular rate, chest clear to auscultation. Treatment regimen evaluated.',
+        CaseType: caseType,
+        PreviousVisitID: priorVisitId || '',
+        ChiefComplaint: isOldCase ? ('Follow-up re-evaluation for ' + (pat.MedicalConditions || 'chronic illness')) : (pat.MedicalConditions ? 'Initial evaluation for ' + pat.MedicalConditions : 'Regular checkup evaluation'),
+        ClinicalNotes: isOldCase ? 'Patient returned to outpatient clinic for follow-up review. Vital signs reassessed and response to prior medications evaluated.' : 'Patient examined in clinic. Alert and oriented. Cardiovascular exam regular rate, chest clear to auscultation. Treatment regimen evaluated.',
         DiagnosisSummary: pat.MedicalConditions || 'Essential Wellness Exam',
         TreatmentPlan: 'Continue prescribed medications, lifestyle modifications, and follow-up in designated period.',
         FollowUpDate: '2026-04-' + String(10 + (i % 15)).padStart(2, '0'),
@@ -1880,6 +1912,51 @@ const DAL = {
           CreatedAt: '2026-01-01T08:00:00Z',
           UpdatedAt: '2026-03-20T09:45:00Z'
         }
+      ],
+      Services: [
+        // --- IPD Fees & Inpatient Care ---
+        { ServiceID: 'SRV-001', ServiceCode: 'IPD-BED-ICU', ServiceName: 'Intensive Care Unit (ICU) Daily Bed & Critical Care Rate', Category: 'IPD & Inpatient Care', SubCategory: 'Ward Bed Fee', DepartmentID: 'DEP-002', DepartmentName: 'Cardiology / Intensive Care', Price: 250.00, Cost: 120.00, BillingUnit: 'Per Day', TaxRate: 0.05, Status: 'Active', Description: 'Daily inpatient ICU bed accommodation including bedside telemetry, infusion monitoring, and critical care nursing.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-002', ServiceCode: 'IPD-BED-GEN', ServiceName: 'General Medical Ward Daily Bed Rate (Pavilion A)', Category: 'IPD & Inpatient Care', SubCategory: 'Ward Bed Fee', DepartmentID: 'DEP-001', DepartmentName: 'General Medicine', Price: 60.00, Cost: 25.00, BillingUnit: 'Per Day', TaxRate: 0.05, Status: 'Active', Description: 'Standard multi-occupancy general inpatient medical bed with round-the-clock nursing care and linen service.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-003', ServiceCode: 'IPD-BED-SURG', ServiceName: 'Surgical Ward Inpatient Bed Daily Rate (Wing B)', Category: 'IPD & Inpatient Care', SubCategory: 'Ward Bed Fee', DepartmentID: 'DEP-004', DepartmentName: 'Orthopedics & Surgery', Price: 85.00, Cost: 38.00, BillingUnit: 'Per Day', TaxRate: 0.05, Status: 'Active', Description: 'Post-operative surgical ward accommodation with wound monitoring and specialized post-op nursing care.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-004', ServiceCode: 'IPD-BED-PVT', ServiceName: 'Private Deluxe Single Suite Inpatient Daily Rate', Category: 'IPD & Inpatient Care', SubCategory: 'Ward Bed Fee', DepartmentID: 'DEP-001', DepartmentName: 'General Medicine', Price: 180.00, Cost: 75.00, BillingUnit: 'Per Day', TaxRate: 0.05, Status: 'Active', Description: 'Private en-suite room with dedicated patient amenities, companion sofa bed, and personalized inpatient care.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-005', ServiceCode: 'IPD-BED-PED', ServiceName: 'Pediatric Semi-Private Ward Inpatient Daily Rate', Category: 'IPD & Inpatient Care', SubCategory: 'Ward Bed Fee', DepartmentID: 'DEP-003', DepartmentName: 'Pediatrics', Price: 70.00, Cost: 30.00, BillingUnit: 'Per Day', TaxRate: 0.05, Status: 'Active', Description: 'Child-friendly pediatric inpatient bed with parental cot facility and pediatric nursing supervision.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-006', ServiceCode: 'IPD-DOC-RND', ServiceName: 'Attending Physician Daily Inpatient Ward Round', Category: 'IPD & Inpatient Care', SubCategory: 'Physician Rounds', DepartmentID: 'DEP-001', DepartmentName: 'General Medicine', Price: 40.00, Cost: 15.00, BillingUnit: 'Per Round', TaxRate: 0.00, Status: 'Active', Description: 'Daily clinical evaluation, chart review, treatment regimen adjustment, and bedside examination by attending doctor.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-007', ServiceCode: 'IPD-ICU-CRIT', ServiceName: 'Intensivist Critical Care Monitoring Round (ICU)', Category: 'IPD & Inpatient Care', SubCategory: 'Physician Rounds', DepartmentID: 'DEP-002', DepartmentName: 'Cardiology / Intensive Care', Price: 95.00, Cost: 40.00, BillingUnit: 'Per Round', TaxRate: 0.00, Status: 'Active', Description: 'Advanced ICU hemodynamics, ventilator weaning, inotropic titrations, and multisystem critical care round.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-008', ServiceCode: 'IPD-ADM-INT', ServiceName: 'Inpatient Hospital Admission Intake & Setup Fee', Category: 'IPD & Inpatient Care', SubCategory: 'Admission Processing', DepartmentID: 'DEP-001', DepartmentName: 'Patient Admissions', Price: 50.00, Cost: 18.00, BillingUnit: 'Per Admission', TaxRate: 0.05, Status: 'Active', Description: 'Initial clinical triage admission processing, ID wristband encoding, IPD chart opening, and electronic nursing assignment.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-009', ServiceCode: 'IPD-NURS-24H', ServiceName: '24-Hour Specialized Inpatient Nursing Care Fee', Category: 'IPD & Inpatient Care', SubCategory: 'Nursing Care', DepartmentID: 'DEP-001', DepartmentName: 'Nursing Administration', Price: 35.00, Cost: 12.00, BillingUnit: 'Per Day', TaxRate: 0.00, Status: 'Active', Description: 'Continuous 24-hour ward nursing supervision, vital signs charting, MAR administration, and patient safety care.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+
+        // --- Investigation Order Fees (Radiology, Cardiology & Laboratory) ---
+        { ServiceID: 'SRV-010', ServiceCode: 'INV-LAB-CBC', ServiceName: 'Complete Blood Count (CBC) with Differential', Category: 'Diagnostic Investigation', SubCategory: 'Laboratory Pathology', DepartmentID: 'DEP-001', DepartmentName: 'Pathology Diagnostics', Price: 25.00, Cost: 8.00, BillingUnit: 'Per Order', TaxRate: 0.00, Status: 'Active', Description: 'Automated 5-part differential hematology analyzer: WBC, RBC, Hgb, Hct, MCV, MCH, Platelet count.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-011', ServiceCode: 'INV-LAB-CMP', ServiceName: 'Comprehensive Metabolic Panel (CMP - 14 Parameters)', Category: 'Diagnostic Investigation', SubCategory: 'Laboratory Pathology', DepartmentID: 'DEP-001', DepartmentName: 'Clinical Biochemistry', Price: 45.00, Cost: 14.00, BillingUnit: 'Per Order', TaxRate: 0.00, Status: 'Active', Description: 'Biochemistry panel: Glucose, BUN, Creatinine, Electrolytes (Na/K/Cl/CO2), Calcium, Total Protein, Albumin, Bilirubin, AST, ALT, ALP.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-012', ServiceCode: 'INV-LAB-LIP', ServiceName: 'Lipid Profile & Atherogenic Risk Panel', Category: 'Diagnostic Investigation', SubCategory: 'Laboratory Pathology', DepartmentID: 'DEP-002', DepartmentName: 'Clinical Biochemistry', Price: 35.00, Cost: 10.00, BillingUnit: 'Per Order', TaxRate: 0.00, Status: 'Active', Description: 'Total Cholesterol, HDL Cholesterol, Direct LDL, Triglycerides, and Non-HDL risk assessment.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-013', ServiceCode: 'INV-LAB-HBA1C', ServiceName: 'Hemoglobin A1c (HbA1c) Glycated Blood Sugar', Category: 'Diagnostic Investigation', SubCategory: 'Laboratory Pathology', DepartmentID: 'DEP-005', DepartmentName: 'Clinical Biochemistry', Price: 30.00, Cost: 9.00, BillingUnit: 'Per Order', TaxRate: 0.00, Status: 'Active', Description: 'HPLC quantitative determination of HbA1c for quarterly glycemic control monitoring in diabetes.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-014', ServiceCode: 'INV-LAB-TSH', ServiceName: 'Thyroid Stimulating Hormone (TSH) Sensitive', Category: 'Diagnostic Investigation', SubCategory: 'Laboratory Pathology', DepartmentID: 'DEP-005', DepartmentName: 'Immunology & Hormones', Price: 35.00, Cost: 11.00, BillingUnit: 'Per Order', TaxRate: 0.00, Status: 'Active', Description: 'Third-generation chemiluminescent immunoassay for screening thyroid dysfunctions (hyper/hypothyroidism).', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-015', ServiceCode: 'INV-LAB-TROP', ServiceName: 'Cardiac Troponin I Quantitative STAT Order', Category: 'Diagnostic Investigation', SubCategory: 'Laboratory Pathology', DepartmentID: 'DEP-002', DepartmentName: 'Pathology Diagnostics', Price: 50.00, Cost: 16.00, BillingUnit: 'Per Order', TaxRate: 0.00, Status: 'Active', Description: 'High-sensitivity bedside/core lab immunoassay for acute myocardial necrosis, NSTEMI, and cardiac ischemia.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-016', ServiceCode: 'INV-LAB-UA', ServiceName: 'Urinalysis Automated & Microscopic Examination', Category: 'Diagnostic Investigation', SubCategory: 'Laboratory Pathology', DepartmentID: 'DEP-001', DepartmentName: 'Pathology Diagnostics', Price: 18.00, Cost: 5.00, BillingUnit: 'Per Order', TaxRate: 0.00, Status: 'Active', Description: 'Urine chemistry dipstick (pH, protein, glucose, ketones, blood, nitrites, leukocyte esterase) + spun sediment microscopy.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-017', ServiceCode: 'INV-RAD-XCHEST', ServiceName: 'Chest X-Ray Digital Radiography (PA & Lateral)', Category: 'Diagnostic Investigation', SubCategory: 'Radiology Imaging', DepartmentID: 'DEP-001', DepartmentName: 'Diagnostic Radiology', Price: 65.00, Cost: 22.00, BillingUnit: 'Per Study', TaxRate: 0.05, Status: 'Active', Description: 'Dual-view digital radiography of the thorax, lung parenchymal opacities, pleural spaces, and cardiothoracic ratio.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-018', ServiceCode: 'INV-RAD-CTBRAIN', ServiceName: 'Brain CT Scan (Computed Tomography Non-Contrast)', Category: 'Diagnostic Investigation', SubCategory: 'Radiology Imaging', DepartmentID: 'DEP-001', DepartmentName: 'Diagnostic Radiology', Price: 350.00, Cost: 110.00, BillingUnit: 'Per Study', TaxRate: 0.05, Status: 'Active', Description: 'Multislice axial CT of head and cranium to evaluate stroke, trauma, intracranial hemorrhage, and mass effect.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-019', ServiceCode: 'INV-RAD-CTABD', ServiceName: 'Chest & Abdomen Helical CT Scan with Contrast', Category: 'Diagnostic Investigation', SubCategory: 'Radiology Imaging', DepartmentID: 'DEP-001', DepartmentName: 'Diagnostic Radiology', Price: 480.00, Cost: 160.00, BillingUnit: 'Per Study', TaxRate: 0.05, Status: 'Active', Description: 'High-resolution IV-contrast enhanced computed tomography of the thoracic cage, mediastinum, liver, spleen, kidneys, and pelvis.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-020', ServiceCode: 'INV-CARD-ECHO', ServiceName: '2D Transthoracic Echocardiography (Echo + Doppler)', Category: 'Diagnostic Investigation', SubCategory: 'Cardiology Diagnostics', DepartmentID: 'DEP-002', DepartmentName: 'Cardiovascular Imaging', Price: 220.00, Cost: 70.00, BillingUnit: 'Per Study', TaxRate: 0.05, Status: 'Active', Description: 'Comprehensive ultrasound evaluation of myocardial wall motion, ejection fraction (LVEF), valve regurgitation/stenosis.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-021', ServiceCode: 'INV-RAD-USABD', ServiceName: 'Abdominal Complete Ultrasound Sonography', Category: 'Diagnostic Investigation', SubCategory: 'Radiology Imaging', DepartmentID: 'DEP-001', DepartmentName: 'Diagnostic Radiology', Price: 110.00, Cost: 35.00, BillingUnit: 'Per Study', TaxRate: 0.05, Status: 'Active', Description: 'Real-time B-mode ultrasound examination of hepatobiliary system, gallbladder cholelithiasis, pancreas, and renal parenchyma.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-022', ServiceCode: 'INV-RAD-XKNEE', ServiceName: 'Knee Joint X-Ray (AP, Lateral & Skyline Views)', Category: 'Diagnostic Investigation', SubCategory: 'Radiology Imaging', DepartmentID: 'DEP-004', DepartmentName: 'Diagnostic Radiology', Price: 80.00, Cost: 26.00, BillingUnit: 'Per Study', TaxRate: 0.05, Status: 'Active', Description: 'Weight-bearing orthogonal digital radiograph of knee for fracture, osteoarthritis grading, and joint effusion.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-023', ServiceCode: 'INV-CARD-ECG', ServiceName: '12-Lead Electrocardiogram (ECG / EKG) with Analysis', Category: 'Diagnostic Investigation', SubCategory: 'Cardiology Diagnostics', DepartmentID: 'DEP-002', DepartmentName: 'Cardiovascular Imaging', Price: 35.00, Cost: 10.00, BillingUnit: 'Per Study', TaxRate: 0.00, Status: 'Active', Description: 'Standard 12-lead surface electrogram recording for rhythm disturbance, ST-elevation, bundle branch blocks, and QT intervals.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-024', ServiceCode: 'INV-LAB-DENGUE', ServiceName: 'Dengue NS1 Antigen & IgG/IgM Rapid Duo Order', Category: 'Diagnostic Investigation', SubCategory: 'Laboratory Pathology', DepartmentID: 'DEP-001', DepartmentName: 'Pathology Diagnostics', Price: 28.00, Cost: 9.00, BillingUnit: 'Per Order', TaxRate: 0.00, Status: 'Active', Description: 'Immuno-chromatographic dual cassette rapid test for early dengue NS1 antigen and secondary acute IgG/IgM serology.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+
+        // --- OPD, Emergency & Consultation Fees ---
+        { ServiceID: 'SRV-025', ServiceCode: 'OPD-CONS-GEN', ServiceName: 'General Physician Outpatient Consultation Fee', Category: 'OPD & Emergency', SubCategory: 'Consultation Fee', DepartmentID: 'DEP-001', DepartmentName: 'General Medicine', Price: 40.00, Cost: 12.00, BillingUnit: 'Per Consultation', TaxRate: 0.00, Status: 'Active', Description: 'Primary outpatient medical history examination, prescription review, and diagnostic referral by general practitioner.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-026', ServiceCode: 'OPD-CONS-SPEC', ServiceName: 'Specialist Clinical Consultation Fee (Cardiology / Orthopedics)', Category: 'OPD & Emergency', SubCategory: 'Consultation Fee', DepartmentID: 'DEP-002', DepartmentName: 'Cardiology', Price: 65.00, Cost: 20.00, BillingUnit: 'Per Consultation', TaxRate: 0.00, Status: 'Active', Description: 'In-depth specialist medical examination, diagnostic interpretation, and customized treatment planning.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-027', ServiceCode: 'ER-TRI-ACUTE', ServiceName: 'Emergency Department Triage & Resuscitation Intake Fee', Category: 'OPD & Emergency', SubCategory: 'Emergency Care', DepartmentID: 'DEP-001', DepartmentName: 'Emergency Department', Price: 150.00, Cost: 55.00, BillingUnit: 'Per Encounter', TaxRate: 0.05, Status: 'Active', Description: 'Immediate emergency physician triage assessment, trauma stabilization, oxygen setup, and emergency pathway intake.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-028', ServiceCode: 'ER-BAY-STAT', ServiceName: 'ER Resuscitation Bay Occupancy & Monitoring (Hourly)', Category: 'OPD & Emergency', SubCategory: 'Emergency Care', DepartmentID: 'DEP-001', DepartmentName: 'Emergency Department', Price: 250.00, Cost: 90.00, BillingUnit: 'Per Hour', TaxRate: 0.05, Status: 'Active', Description: 'Acute bay occupancy with continuous defibrillator, suction, multiparameter monitor, and bedside emergency nurse.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+
+        // --- Surgical & OT Procedures ---
+        { ServiceID: 'SRV-029', ServiceCode: 'SURG-OT-MAJ', ServiceName: 'Major Operating Theater Surgical Suite Facility Fee', Category: 'Surgical & OT', SubCategory: 'Operating Theater', DepartmentID: 'DEP-004', DepartmentName: 'Operation Theater', Price: 600.00, Cost: 220.00, BillingUnit: 'Per Procedure', TaxRate: 0.05, Status: 'Active', Description: 'Use of laminar airflow sterile OR cleanroom, surgical lighting, electrocautery generator, and perioperative nursing team.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-030', ServiceCode: 'SURG-ANES-GEN', ServiceName: 'General Anesthesia (GETA) Delivery & Monitoring', Category: 'Surgical & OT', SubCategory: 'Anesthesia Service', DepartmentID: 'DEP-004', DepartmentName: 'Anesthesiology', Price: 280.00, Cost: 95.00, BillingUnit: 'Per Procedure', TaxRate: 0.00, Status: 'Active', Description: 'Endotracheal intubation, volatile anesthetic administration, muscle relaxation monitoring, and PACU reversal.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-031', ServiceCode: 'SURG-CSSD-SET', ServiceName: 'CSSD Sterile Instrument Tray Processing Fee', Category: 'Surgical & OT', SubCategory: 'Sterile Processing', DepartmentID: 'DEP-004', DepartmentName: 'Central Sterile Supply (CSSD)', Price: 45.00, Cost: 15.00, BillingUnit: 'Per Set', TaxRate: 0.05, Status: 'Active', Description: 'High-pressure vacuum steam autoclave sterilization, biological indicator spore validation, and tamper-evident pouching.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+
+        // --- Nursing & Clinical Procedures ---
+        { ServiceID: 'SRV-032', ServiceCode: 'PROC-IV-INF', ServiceName: 'Intravenous (IV) Line Cannulation & Infusion Set Fee', Category: 'Nursing & Therapy', SubCategory: 'Clinical Procedure', DepartmentID: 'DEP-001', DepartmentName: 'Nursing Administration', Price: 25.00, Cost: 7.50, BillingUnit: 'Per Procedure', TaxRate: 0.05, Status: 'Active', Description: 'Aseptic peripheral vein cannulation, IV catheter placement, extension line, and infusion administration setup.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-033', ServiceCode: 'PROC-WND-DRS', ServiceName: 'Surgical Wound Debridement & Sterile Dressing', Category: 'Nursing & Therapy', SubCategory: 'Clinical Procedure', DepartmentID: 'DEP-004', DepartmentName: 'Orthopedics & Surgery', Price: 35.00, Cost: 12.00, BillingUnit: 'Per Treatment', TaxRate: 0.05, Status: 'Active', Description: 'Aseptic post-op wound cleansing, chlorhexidine disinfection, exudate inspection, and sterile hydrocellular dressing.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' },
+        { ServiceID: 'SRV-034', ServiceCode: 'PROC-NEB-TH', ServiceName: 'Aerosol Nebulization Therapy Administration', Category: 'Nursing & Therapy', SubCategory: 'Clinical Procedure', DepartmentID: 'DEP-001', DepartmentName: 'General Medicine', Price: 20.00, Cost: 6.00, BillingUnit: 'Per Treatment', TaxRate: 0.05, Status: 'Active', Description: 'Medical jet nebulization of bronchodilators/corticosteroids with compressed medical air and respiratory supervision.', CreatedAt: '2026-01-01T08:00:00Z', UpdatedAt: '2026-01-01T08:00:00Z' }
       ]
     };
   }
@@ -2036,6 +2113,7 @@ function formatEntityTitle(str) {
     const tr = i18n.t(key);
     if (tr && tr !== key) return tr;
   }
+  if (str === 'services') return 'Service List & Fee Schedule';
   if (str === 'emergency') return 'Emergency (ER / ED) Encounters';
   if (str === 'emergency_bays') return 'Emergency Trauma & Bays';
   if (str === 'surgeries' || str === 'operation_theater') return 'Operation Theater (OT / OR)';
@@ -2127,16 +2205,16 @@ function renderRibbon() {
 
     // Entity Grid Ribbon
     const entityName = getEntityForView(appState.currentView);
-    const canCreate = ['Patients', 'Appointments', 'Visits', 'Prescriptions', 'LaboratoryResults', 'Invoices', 'Payments', 'FollowUps', 'Users', 'SecurityRoles', 'Admissions', 'Beds', 'EmergencyEncounters', 'EmergencyBays', 'Surgeries', 'SterileTrays'].includes(entityName);
+    const canCreate = ['Patients', 'Appointments', 'Visits', 'Prescriptions', 'LaboratoryResults', 'Invoices', 'Payments', 'FollowUps', 'Users', 'SecurityRoles', 'Admissions', 'Beds', 'EmergencyEncounters', 'EmergencyBays', 'Surgeries', 'SterileTrays', 'Services'].includes(entityName);
 
     const isKh = typeof i18n !== 'undefined' && i18n.currentLang === 'kh';
     const newRecordLabel = isKh 
       ? `+ ${t('ribbon_new', 'ថ្មី')} ${formatEntityTitle(appState.currentView)}`
-      : `New ${appState.currentView === 'users' ? 'User' : (appState.currentView === 'security_roles' ? 'Role' : (appState.currentView === 'admissions' ? 'Admission' : (appState.currentView === 'beds' ? 'Bed' : (appState.currentView === 'emergency' ? 'ER Triage Intake' : (appState.currentView === 'emergency_bays' ? 'ER Bay' : (appState.currentView === 'surgeries' ? 'Surgery Booking' : (appState.currentView === 'sterile_processing' ? 'Sterile Tray' : (formatEntityTitle(appState.currentView).slice(0, -1) || 'Record'))))))))}`;
+      : `New ${appState.currentView === 'users' ? 'User' : (appState.currentView === 'security_roles' ? 'Role' : (appState.currentView === 'admissions' ? 'Admission' : (appState.currentView === 'beds' ? 'Bed' : (appState.currentView === 'emergency' ? 'ER Triage Intake' : (appState.currentView === 'emergency_bays' ? 'ER Bay' : (appState.currentView === 'surgeries' ? 'Surgery Booking' : (appState.currentView === 'sterile_processing' ? 'Sterile Tray' : (appState.currentView === 'services' ? 'Service / Fee' : (formatEntityTitle(appState.currentView).slice(0, -1) || 'Record')))))))))}`;
 
     container.innerHTML = `
       ${canCreate ? `
-        <button onclick="openCreateModal('${appState.currentView === 'surgeries' ? 'surgery' : (appState.currentView === 'sterile_processing' ? 'sterile_tray' : appState.currentView)}')" class="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078d4] hover:bg-[#106ebe] text-white text-xs font-semibold rounded shadow-xs transition">
+        <button onclick="openCreateModal('${appState.currentView === 'surgeries' ? 'surgery' : (appState.currentView === 'sterile_processing' ? 'sterile_tray' : (appState.currentView === 'services' ? 'service' : appState.currentView))}')" class="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078d4] hover:bg-[#106ebe] text-white text-xs font-semibold rounded shadow-xs transition">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i>
           <span>${newRecordLabel}</span>
         </button>
@@ -2178,6 +2256,7 @@ function getEntityForView(viewId) {
     payments: 'Payments',
     doctors: 'Doctors',
     departments: 'Departments',
+    services: 'Services',
     followups: 'FollowUps',
     users: 'Users',
     security_roles: 'SecurityRoles',
@@ -2254,6 +2333,9 @@ function renderMainView() {
       break;
     case 'departments':
       main.innerHTML = renderDepartmentsGrid();
+      break;
+    case 'services':
+      main.innerHTML = renderServicesGrid();
       break;
     case 'followups':
       main.innerHTML = renderFollowupsGrid();
@@ -3124,7 +3206,7 @@ function renderPatientTabContent(pat, doc, appts, visits, diagnoses, rx, labs, i
             <h4 class="font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <i data-lucide="stethoscope" class="w-3.5 h-3.5 text-teal-600"></i> Encounters & Visits (${visits.length})
             </h4>
-            ${renderSubgridTable(['Visit Date', 'Chief Complaint', 'Diagnosis', 'Status'], visits.map(v => [v.VisitDate, v.ChiefComplaint, v.DiagnosisSummary, getStatusBadge(v.VisitStatus)]))}
+            ${renderSubgridTable(['Visit Date', 'Case Type', 'Chief Complaint', 'Diagnosis', 'Status'], visits.map(v => [v.VisitDate, (v.CaseType === 'Old Case' ? '<span class="text-blue-700 font-bold">🔄 Old Case</span>' : '<span class="text-emerald-700 font-bold">✨ New Case</span>'), v.ChiefComplaint, v.DiagnosisSummary, getStatusBadge(v.VisitStatus)]))}
           </div>
 
           <!-- Subgrid: Prescriptions -->
@@ -3323,21 +3405,26 @@ function quickCheckIn(appointmentId) {
   DAL.update('Appointments', appointmentId, { Status: 'Checked In' });
 
   // Auto-generate Visit / Encounter for the checked in patient
+  const existingVisits = DAL.find('Visits', { PatientID: appt.PatientID });
+  const isOldCase = existingVisits.length > 0;
   const newVisit = {
     PatientID: appt.PatientID,
     AppointmentID: appt.AppointmentID,
     DoctorID: appt.DoctorID,
     VisitDate: appt.AppointmentDate,
+    CaseType: isOldCase ? 'Old Case' : 'New Case',
+    PreviousVisitID: isOldCase ? existingVisits[existingVisits.length - 1].VisitID : '',
     ChiefComplaint: appt.ReasonForVisit,
-    ClinicalNotes: 'Patient checked in at front desk. Awaiting nurse triage.',
+    ClinicalNotes: isOldCase ? 'Returning patient checked in at front desk (Old Case). Awaiting nurse triage.' : 'Patient checked in at front desk (New Case). Awaiting nurse triage.',
     DiagnosisSummary: '',
     TreatmentPlan: '',
     FollowUpDate: '',
-    VisitStatus: 'Arrived'
+    VisitStatus: 'Arrived',
+    OpdStage: 'Triage'
   };
   DAL.create('Visits', newVisit);
 
-  showToast(`Patient checked in! Visit record created.`, 'success');
+  showToast(`Patient checked in! ${newVisit.CaseType} OPD encounter created.`, 'success');
   renderMainView();
 }
 
@@ -3366,18 +3453,50 @@ function getOpdStageBadge(stage, needsInvestigation) {
   }
 }
 
+function setOpdCaseFilter(filter) {
+  appState.opdCaseFilter = filter;
+  renderMainView();
+}
+
 function renderVisitsGrid() {
   const allVisits = DAL.find('Visits');
-  const filtered = filterAndSortRecords(allVisits, ['VisitID', 'ChiefComplaint', 'DiagnosisSummary', 'VisitStatus', 'OpdStage']);
+  const activeCaseFilter = appState.opdCaseFilter || 'all';
+
+  const newCasesCount = allVisits.filter(v => v.CaseType === 'New Case').length;
+  const oldCasesCount = allVisits.filter(v => v.CaseType === 'Old Case').length;
+
+  let displayVisits = allVisits;
+  if (activeCaseFilter === 'new') {
+    displayVisits = allVisits.filter(v => v.CaseType === 'New Case');
+  } else if (activeCaseFilter === 'old') {
+    displayVisits = allVisits.filter(v => v.CaseType === 'Old Case');
+  }
+
+  const filtered = filterAndSortRecords(displayVisits, ['VisitID', 'ChiefComplaint', 'DiagnosisSummary', 'VisitStatus', 'OpdStage', 'CaseType']);
 
   return `
     <div class="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden flex flex-col h-[calc(100vh-135px)]">
-      <div class="p-3 bg-[#f8f9fa] border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div class="flex items-center gap-2">
-          <i data-lucide="stethoscope" class="w-4 h-4 text-teal-600"></i>
-          <span class="text-xs font-bold text-slate-800 uppercase tracking-wider">Outpatient Department (OPD) Encounters</span>
-          <span class="text-[11px] bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full font-bold">${allVisits.length} visits</span>
+      <div class="p-3 bg-[#f8f9fa] border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center flex-wrap gap-2.5">
+          <div class="flex items-center gap-2">
+            <i data-lucide="stethoscope" class="w-4 h-4 text-teal-600"></i>
+            <span class="text-xs font-bold text-slate-800 uppercase tracking-wider">Outpatient Department (OPD) Encounters</span>
+          </div>
+
+          <!-- Case Classification Filter Pills -->
+          <div class="inline-flex items-center bg-slate-200/80 rounded-lg p-0.5 text-xs font-semibold">
+            <button onclick="setOpdCaseFilter('all')" class="px-2.5 py-1 rounded-md transition ${activeCaseFilter === 'all' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'}">
+              All (${allVisits.length})
+            </button>
+            <button onclick="setOpdCaseFilter('new')" class="px-2.5 py-1 rounded-md transition flex items-center gap-1 ${activeCaseFilter === 'new' ? 'bg-emerald-600 text-white shadow-2xs font-bold' : 'text-emerald-700 hover:bg-emerald-50'}">
+              <i data-lucide="sparkles" class="w-3 h-3"></i> New Cases (${newCasesCount})
+            </button>
+            <button onclick="setOpdCaseFilter('old')" class="px-2.5 py-1 rounded-md transition flex items-center gap-1 ${activeCaseFilter === 'old' ? 'bg-blue-600 text-white shadow-2xs font-bold' : 'text-blue-700 hover:bg-blue-50'}">
+              <i data-lucide="history" class="w-3 h-3"></i> Old Cases (${oldCasesCount})
+            </button>
+          </div>
         </div>
+
         <div class="flex items-center gap-2">
           <input type="text" placeholder="Filter encounters..." value="${appState.searchTerm}" onkeyup="handleGridSearch(event)" class="text-xs border border-slate-300 rounded px-3 py-1 bg-white outline-none focus:border-blue-500 w-48">
           <button onclick="openNewVisitModal()" class="px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded text-xs font-semibold flex items-center gap-1 shadow-2xs transition">
@@ -3392,6 +3511,7 @@ function renderVisitsGrid() {
           <thead class="bg-[#f3f2f1] text-slate-700 uppercase tracking-wider text-[11px] sticky top-0 border-b border-slate-300 z-10 select-none">
             <tr>
               <th class="p-2.5">Visit ID</th>
+              <th class="p-2.5">Case Classification</th>
               <th class="p-2.5">Patient</th>
               <th class="p-2.5">Attending Doctor</th>
               <th class="p-2.5">Date</th>
@@ -3407,9 +3527,18 @@ function renderVisitsGrid() {
               const p = DAL.findById('Patients', v.PatientID) || {};
               const d = DAL.findById('Doctors', v.DoctorID) || {};
               const stage = v.OpdStage || (v.VisitStatus === 'Completed' ? 'Completed' : (v.VisitStatus === 'In Consultation' ? 'Consultation' : 'Triage'));
+              const isOldCase = v.CaseType === 'Old Case';
+              const caseBadge = isOldCase ?
+                `<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-300 gap-1" title="Patient used to come for visit ${v.PreviousVisitID ? `(Prior Encounter: ${v.PreviousVisitID})` : ''}">
+                  <i data-lucide="history" class="w-3 h-3 text-blue-600"></i> Old Case
+                </span>` :
+                `<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 gap-1" title="First-time visit for this condition">
+                  <i data-lucide="sparkles" class="w-3 h-3 text-emerald-600"></i> New Case
+                </span>`;
               return `
                 <tr class="hover:bg-slate-50 transition">
                   <td class="p-2.5 font-mono font-bold text-teal-700">${v.VisitID}</td>
+                  <td class="p-2.5">${caseBadge}</td>
                   <td class="p-2.5 font-semibold text-slate-900">${p.FirstName || ''} ${p.LastName || ''}</td>
                   <td class="p-2.5 text-slate-700">${d.DoctorName || v.DoctorID}</td>
                   <td class="p-2.5 text-slate-600 font-mono">${v.VisitDate}</td>
@@ -4383,6 +4512,887 @@ function renderDepartmentsGrid() {
   `;
 }
 
+// ==========================================
+// SERVICE LIST & HOSPITAL FEE SCHEDULE (MANAGEMENT)
+// ==========================================
+let currentServiceCategoryFilter = 'all';
+let currentServiceStatusFilter = 'all';
+let currentServiceSearchTerm = '';
+
+function renderServicesGrid() {
+  const services = DAL.find('Services') || [];
+  const depts = DAL.find('Departments') || [];
+
+  // Metrics
+  const totalCount = services.length;
+  const ipdServices = services.filter(s => s.Category === 'IPD & Inpatient Care');
+  const invServices = services.filter(s => s.Category === 'Diagnostic Investigation');
+  const opdServices = services.filter(s => s.Category === 'OPD & Emergency');
+  const surgServices = services.filter(s => s.Category === 'Surgical & OT');
+  const nursServices = services.filter(s => s.Category === 'Nursing & Therapy');
+
+  // Compute bed fees
+  const bedServices = ipdServices.filter(s => s.SubCategory === 'Ward Bed Fee');
+  const minBedPrice = bedServices.length ? Math.min(...bedServices.map(s => parseFloat(s.Price || 0))) : 60;
+  const maxBedPrice = bedServices.length ? Math.max(...bedServices.map(s => parseFloat(s.Price || 0))) : 250;
+  const roundService = ipdServices.find(s => s.ServiceCode === 'IPD-DOC-RND');
+  const roundFee = roundService ? parseFloat(roundService.Price || 40) : 40.00;
+
+  // Compute inv fees
+  const avgInv = invServices.length ? (invServices.reduce((acc, s) => acc + parseFloat(s.Price || 0), 0) / invServices.length).toFixed(0) : 118;
+
+  // Filter records
+  let filtered = services.filter(s => {
+    // Category filter
+    if (currentServiceCategoryFilter === 'ipd' && s.Category !== 'IPD & Inpatient Care') return false;
+    if (currentServiceCategoryFilter === 'investigation' && s.Category !== 'Diagnostic Investigation') return false;
+    if (currentServiceCategoryFilter === 'opd_er' && s.Category !== 'OPD & Emergency') return false;
+    if (currentServiceCategoryFilter === 'surgical' && s.Category !== 'Surgical & OT') return false;
+    if (currentServiceCategoryFilter === 'nursing' && s.Category !== 'Nursing & Therapy') return false;
+
+    // Status filter
+    if (currentServiceStatusFilter !== 'all' && s.Status !== currentServiceStatusFilter) return false;
+
+    // Search term
+    if (currentServiceSearchTerm) {
+      const q = currentServiceSearchTerm.toLowerCase();
+      const match = (s.ServiceName && s.ServiceName.toLowerCase().includes(q)) ||
+                    (s.ServiceCode && s.ServiceCode.toLowerCase().includes(q)) ||
+                    (s.SubCategory && s.SubCategory.toLowerCase().includes(q)) ||
+                    (s.DepartmentName && s.DepartmentName.toLowerCase().includes(q)) ||
+                    (s.Description && s.Description.toLowerCase().includes(q));
+      if (!match) return false;
+    }
+    return true;
+  });
+
+  const isKh = typeof i18n !== 'undefined' && i18n.currentLang === 'kh';
+
+  return `
+    <div class="space-y-4">
+      <!-- Title & Header Bar -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-700 shadow-inner">
+            <i data-lucide="badge-dollar-sign" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 class="text-base font-bold text-slate-900">${isKh ? 'បញ្ជីសេវា & តម្លៃសេវាមន្ទីរពេទ្យ' : 'Hospital Service List & Fee Schedule'}</h2>
+              <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-semibold text-[11px] border border-emerald-200">${totalCount} Services</span>
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">
+              ${isKh ? 'គ្រប់គ្រងតម្លៃសេវាសម្រាកពេទ្យ (IPD) តម្លៃតេស្ត និងការពិនិត្យ (Investigation Orders) និងសេវាវះកាត់។' : 'Charge Description Master (CDM): Configure standard billable fees for Inpatient (IPD) bed rates, daily doctor rounds, diagnostic investigation orders, outpatient, and surgical care.'}
+            </p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button onclick="openCreateServiceModal()" class="px-3.5 py-2 bg-[#0078d4] hover:bg-[#106ebe] text-white text-xs font-semibold rounded-lg shadow-sm flex items-center gap-1.5 transition cursor-pointer">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>${isKh ? '+ បង្កើតសេវាថ្មី' : '+ Add New Service'}</span>
+          </button>
+          <button onclick="DAL.exportToCsv('Services')" class="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium rounded-lg border border-slate-200 shadow-2xs flex items-center gap-1.5 transition cursor-pointer">
+            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-emerald-700"></i>
+            <span>${isKh ? 'ទាញយក Excel' : 'Export Excel'}</span>
+          </button>
+          <button onclick="refreshCurrentView()" class="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition" title="Refresh">
+            <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI Executive Metric Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <!-- KPI 1: Total Services -->
+        <div onclick="setServiceCategoryFilter('all')" class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs hover:border-slate-300 transition cursor-pointer group">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">${isKh ? 'សេវាសរុប' : 'Total Master Services'}</span>
+            <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition">
+              <i data-lucide="layers" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span class="text-2xl font-bold font-mono text-slate-900">${totalCount}</span>
+            <span class="text-[11px] text-emerald-700 font-medium">Standard Tariff</span>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-1">Configured hospital services</p>
+        </div>
+
+        <!-- KPI 2: IPD Care & Bed Rates -->
+        <div onclick="setServiceCategoryFilter('ipd')" class="bg-white p-3.5 rounded-xl border ${currentServiceCategoryFilter === 'ipd' ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'} shadow-2xs hover:border-blue-400 transition cursor-pointer group">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold text-blue-700 uppercase tracking-wider">${isKh ? 'សេវាសម្រាកពេទ្យ (IPD)' : 'Inpatient (IPD) Care Fees'}</span>
+            <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-105 transition">
+              <i data-lucide="hotel" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span class="text-xl font-bold font-mono text-blue-900">$${minBedPrice.toFixed(0)} - $${maxBedPrice.toFixed(0)}</span>
+            <span class="text-[11px] text-blue-700 font-medium">/ Day Bed</span>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-1">${ipdServices.length} IPD items &bull; Round: $${roundFee.toFixed(2)}</p>
+        </div>
+
+        <!-- KPI 3: Diagnostic Investigation Orders -->
+        <div onclick="setServiceCategoryFilter('investigation')" class="bg-white p-3.5 rounded-xl border ${currentServiceCategoryFilter === 'investigation' ? 'border-purple-500 ring-2 ring-purple-100' : 'border-slate-200'} shadow-2xs hover:border-purple-400 transition cursor-pointer group">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold text-purple-700 uppercase tracking-wider">${isKh ? 'សេវាពិនិត្យ & តេស្ត (Investigation)' : 'Investigation Order Fees'}</span>
+            <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center group-hover:scale-105 transition">
+              <i data-lucide="microscope" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span class="text-xl font-bold font-mono text-purple-900">${invServices.length} Tests</span>
+            <span class="text-[11px] text-purple-700 font-medium">Avg: $${avgInv}</span>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-1">Radiology, Labo & Cardiology Scans</p>
+        </div>
+
+        <!-- KPI 4: OPD, OT & Clinical Procedures -->
+        <div onclick="setServiceCategoryFilter('opd_er')" class="bg-white p-3.5 rounded-xl border ${currentServiceCategoryFilter === 'opd_er' ? 'border-rose-500 ring-2 ring-rose-100' : 'border-slate-200'} shadow-2xs hover:border-rose-400 transition cursor-pointer group">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold text-rose-700 uppercase tracking-wider">${isKh ? 'OPD & សង្គ្រោះបន្ទាន់' : 'OPD & Emergency Fees'}</span>
+            <div class="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center group-hover:scale-105 transition">
+              <i data-lucide="stethoscope" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span class="text-xl font-bold font-mono text-rose-900">$40 - $65</span>
+            <span class="text-[11px] text-rose-700 font-medium">OPD Consult</span>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-1">ER Triage: $150 &bull; Major OT: $600</p>
+        </div>
+      </div>
+
+      <!-- Main Data Table Container -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden flex flex-col min-h-[500px]">
+        
+        <!-- Filter Tabs Toolbar -->
+        <div class="px-4 pt-3 pb-2 bg-slate-50/70 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          
+          <!-- Category Filter Pills -->
+          <div class="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1">
+            <button onclick="setServiceCategoryFilter('all')" class="px-3 py-1.5 rounded-md text-xs font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${currentServiceCategoryFilter === 'all' ? 'bg-[#0078d4] text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'}">
+              <span>All Services</span>
+              <span class="px-1.5 py-0.2 rounded-full text-[10px] ${currentServiceCategoryFilter === 'all' ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'}">${totalCount}</span>
+            </button>
+            <button onclick="setServiceCategoryFilter('ipd')" class="px-3 py-1.5 rounded-md text-xs font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${currentServiceCategoryFilter === 'ipd' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'}">
+              <i data-lucide="hotel" class="w-3.5 h-3.5"></i>
+              <span>IPD & Inpatient Care</span>
+              <span class="px-1.5 py-0.2 rounded-full text-[10px] ${currentServiceCategoryFilter === 'ipd' ? 'bg-white/25 text-white' : 'bg-blue-100 text-blue-700'}">${ipdServices.length}</span>
+            </button>
+            <button onclick="setServiceCategoryFilter('investigation')" class="px-3 py-1.5 rounded-md text-xs font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${currentServiceCategoryFilter === 'investigation' ? 'bg-purple-600 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'}">
+              <i data-lucide="microscope" class="w-3.5 h-3.5"></i>
+              <span>Diagnostic Investigations</span>
+              <span class="px-1.5 py-0.2 rounded-full text-[10px] ${currentServiceCategoryFilter === 'investigation' ? 'bg-white/25 text-white' : 'bg-purple-100 text-purple-700'}">${invServices.length}</span>
+            </button>
+            <button onclick="setServiceCategoryFilter('opd_er')" class="px-3 py-1.5 rounded-md text-xs font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${currentServiceCategoryFilter === 'opd_er' ? 'bg-rose-600 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'}">
+              <i data-lucide="stethoscope" class="w-3.5 h-3.5"></i>
+              <span>OPD & Emergency</span>
+              <span class="px-1.5 py-0.2 rounded-full text-[10px] ${currentServiceCategoryFilter === 'opd_er' ? 'bg-white/25 text-white' : 'bg-rose-100 text-rose-700'}">${opdServices.length}</span>
+            </button>
+            <button onclick="setServiceCategoryFilter('surgical')" class="px-3 py-1.5 rounded-md text-xs font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${currentServiceCategoryFilter === 'surgical' ? 'bg-amber-600 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'}">
+              <i data-lucide="scissors" class="w-3.5 h-3.5"></i>
+              <span>Surgical & OT</span>
+              <span class="px-1.5 py-0.2 rounded-full text-[10px] ${currentServiceCategoryFilter === 'surgical' ? 'bg-white/25 text-white' : 'bg-amber-100 text-amber-800'}">${surgServices.length}</span>
+            </button>
+            <button onclick="setServiceCategoryFilter('nursing')" class="px-3 py-1.5 rounded-md text-xs font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${currentServiceCategoryFilter === 'nursing' ? 'bg-teal-600 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'}">
+              <i data-lucide="activity" class="w-3.5 h-3.5"></i>
+              <span>Nursing & Procedures</span>
+              <span class="px-1.5 py-0.2 rounded-full text-[10px] ${currentServiceCategoryFilter === 'nursing' ? 'bg-white/25 text-white' : 'bg-teal-100 text-teal-800'}">${nursServices.length}</span>
+            </button>
+          </div>
+
+          <!-- Search & Status Filter Controls -->
+          <div class="flex items-center gap-2 flex-wrap">
+            <div class="relative">
+              <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+              <input type="text" id="service-search-input" oninput="handleServiceSearch(event)" value="${currentServiceSearchTerm}" placeholder="Search name, code, subcategory..." class="text-xs bg-white border border-slate-300 rounded-md pl-8 pr-7 py-1.5 w-60 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+              ${currentServiceSearchTerm ? `
+                <button onclick="clearServiceSearch()" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <i data-lucide="x" class="w-3 h-3"></i>
+                </button>
+              ` : ''}
+            </div>
+            <select onchange="setServiceStatusFilter(this.value)" class="text-xs bg-white border border-slate-300 rounded-md px-2.5 py-1.5 font-medium outline-none">
+              <option value="all" ${currentServiceStatusFilter === 'all' ? 'selected' : ''}>All Statuses</option>
+              <option value="Active" ${currentServiceStatusFilter === 'Active' ? 'selected' : ''}>Active Only</option>
+              <option value="Inactive" ${currentServiceStatusFilter === 'Inactive' ? 'selected' : ''}>Inactive Only</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Table Area -->
+        <div class="flex-1 overflow-auto custom-scrollbar">
+          ${filtered.length === 0 ? `
+            <div class="p-12 text-center text-slate-400 space-y-3">
+              <div class="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto">
+                <i data-lucide="badge-dollar-sign" class="w-6 h-6"></i>
+              </div>
+              <p class="text-sm font-semibold text-slate-700">No services match the current filter or search criteria.</p>
+              <p class="text-xs text-slate-400">Try selecting a different category or clearing your search term.</p>
+              <button onclick="setServiceCategoryFilter('all'); clearServiceSearch();" class="px-3.5 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md text-xs font-semibold transition cursor-pointer">
+                Reset All Filters
+              </button>
+            </div>
+          ` : `
+            <table class="w-full text-left text-xs border-collapse">
+              <thead class="bg-[#f3f2f1] text-slate-700 uppercase tracking-wider text-[11px] sticky top-0 border-b border-slate-300 z-10 select-none">
+                <tr>
+                  <th class="p-2.5 w-28">Service Code</th>
+                  <th class="p-2.5 min-w-[260px]">Service Name & Description</th>
+                  <th class="p-2.5">Category & Classification</th>
+                  <th class="p-2.5">Department</th>
+                  <th class="p-2.5 text-right">Standard Fee</th>
+                  <th class="p-2.5 text-right">Cost & Margin</th>
+                  <th class="p-2.5 text-center">Status</th>
+                  <th class="p-2.5 text-right pr-4">Quick Management</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200">
+                ${filtered.map(s => {
+                  const price = parseFloat(s.Price || 0);
+                  const cost = parseFloat(s.Cost || 0);
+                  const margin = price > 0 ? Math.round(((price - cost) / price) * 100) : 0;
+
+                  let catBadgeClass = 'bg-slate-100 text-slate-800 border-slate-300';
+                  let catIcon = 'layers';
+                  if (s.Category === 'IPD & Inpatient Care') {
+                    catBadgeClass = 'bg-blue-50 text-blue-800 border-blue-200';
+                    catIcon = 'hotel';
+                  } else if (s.Category === 'Diagnostic Investigation') {
+                    catBadgeClass = 'bg-purple-50 text-purple-800 border-purple-200';
+                    catIcon = 'microscope';
+                  } else if (s.Category === 'OPD & Emergency') {
+                    catBadgeClass = 'bg-rose-50 text-rose-800 border-rose-200';
+                    catIcon = 'stethoscope';
+                  } else if (s.Category === 'Surgical & OT') {
+                    catBadgeClass = 'bg-amber-50 text-amber-800 border-amber-200';
+                    catIcon = 'scissors';
+                  } else if (s.Category === 'Nursing & Therapy') {
+                    catBadgeClass = 'bg-teal-50 text-teal-800 border-teal-200';
+                    catIcon = 'activity';
+                  }
+
+                  return `
+                    <tr class="hover:bg-slate-50/80 transition group">
+                      <td class="p-2.5 align-top">
+                        <span class="inline-flex items-center font-mono font-bold text-[11px] px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
+                          ${s.ServiceCode}
+                        </span>
+                      </td>
+                      <td class="p-2.5 align-top">
+                        <div class="font-bold text-slate-900 group-hover:text-blue-700 transition flex items-center gap-1.5">
+                          <span>${s.ServiceName}</span>
+                          ${s.ServiceCode.startsWith('IPD') ? `<span class="px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded text-[9px] font-bold">IPD</span>` : ''}
+                          ${s.ServiceCode.startsWith('INV') ? `<span class="px-1.5 py-0.2 bg-purple-100 text-purple-800 rounded text-[9px] font-bold">INV ORDER</span>` : ''}
+                        </div>
+                        <p class="text-[11px] text-slate-500 mt-0.5 line-clamp-1" title="${s.Description || ''}">${s.Description || 'No description entered'}</p>
+                      </td>
+                      <td class="p-2.5 align-top">
+                        <div class="space-y-1">
+                          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${catBadgeClass}">
+                            <i data-lucide="${catIcon}" class="w-3 h-3"></i>
+                            <span>${s.Category}</span>
+                          </span>
+                          <span class="block text-[10px] text-slate-500 font-medium pl-1">&bull; ${s.SubCategory || 'General Service'}</span>
+                        </div>
+                      </td>
+                      <td class="p-2.5 align-top">
+                        <span class="text-slate-700 font-medium flex items-center gap-1">
+                          <i data-lucide="building-2" class="w-3 h-3 text-slate-400"></i>
+                          <span>${s.DepartmentName || 'Hospital Wide'}</span>
+                        </span>
+                      </td>
+                      <td class="p-2.5 align-top text-right">
+                        <div class="font-mono">
+                          <span class="text-sm font-bold text-slate-900">$${price.toFixed(2)}</span>
+                          <span class="block text-[10px] text-slate-500 font-sans font-medium">${s.BillingUnit || 'Per Unit'}</span>
+                        </div>
+                      </td>
+                      <td class="p-2.5 align-top text-right font-mono">
+                        <span class="text-slate-600 text-xs">$${cost.toFixed(2)}</span>
+                        <span class="block text-[10px] font-semibold ${margin >= 40 ? 'text-emerald-700' : (margin >= 20 ? 'text-blue-700' : 'text-slate-500')}">
+                          ${margin}% margin
+                        </span>
+                      </td>
+                      <td class="p-2.5 align-top text-center">
+                        <button type="button" onclick="toggleServiceStatus('${s.ServiceID}')" class="cursor-pointer transition transform hover:scale-105" title="Click to toggle status">
+                          ${getStatusBadge(s.Status || 'Active')}
+                        </button>
+                      </td>
+                      <td class="p-2.5 align-top text-right pr-4 space-x-1 whitespace-nowrap">
+                        <button onclick="openQuickFeeModal('${s.ServiceID}')" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded font-semibold text-[11px] inline-flex items-center gap-1 transition shadow-2xs cursor-pointer" title="Quick edit standard fee">
+                          <i data-lucide="dollar-sign" class="w-3 h-3"></i>
+                          <span>Edit Fee</span>
+                        </button>
+                        <button onclick="openEditServiceModal('${s.ServiceID}')" class="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded font-semibold text-[11px] inline-flex items-center gap-1 transition shadow-2xs cursor-pointer" title="Edit full service specifications">
+                          <i data-lucide="pencil" class="w-3 h-3 text-slate-500"></i>
+                          <span>Details</span>
+                        </button>
+                        <button onclick="deleteService('${s.ServiceID}')" class="p-1 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer" title="Deactivate or Remove Service">
+                          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          `}
+        </div>
+
+        <!-- Table Footer Summary -->
+        <div class="px-4 py-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 flex-wrap gap-2">
+          <div class="flex items-center gap-2">
+            <span>Showing <strong class="text-slate-800">${filtered.length}</strong> of <strong class="text-slate-800">${totalCount}</strong> services</span>
+            ${currentServiceCategoryFilter !== 'all' ? `
+              <span class="px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[10px] font-semibold">Filtered by Category: ${currentServiceCategoryFilter.toUpperCase()}</span>
+            ` : ''}
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="inline-flex items-center gap-1 text-[11px]"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Active Services</span>
+            <span class="inline-flex items-center gap-1 text-[11px]"><span class="w-2 h-2 rounded-full bg-slate-400"></span> Inactive / Draft</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  `;
+}
+
+function setServiceCategoryFilter(cat) {
+  currentServiceCategoryFilter = cat;
+  renderMainView();
+}
+
+function setServiceStatusFilter(status) {
+  currentServiceStatusFilter = status;
+  renderMainView();
+}
+
+function handleServiceSearch(e) {
+  currentServiceSearchTerm = (e.target.value || '').trim();
+  renderMainView();
+}
+
+function clearServiceSearch() {
+  currentServiceSearchTerm = '';
+  renderMainView();
+}
+
+function openQuickFeeModal(serviceId) {
+  const service = DAL.findById('Services', serviceId);
+  if (!service) {
+    showToast('Service record not found', 'error');
+    return;
+  }
+  const currentPrice = parseFloat(service.Price || 0);
+
+  openModal(`
+    <div class="px-5 py-3.5 bg-[#002050] text-white flex justify-between items-center">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded bg-emerald-500/20 text-emerald-300 flex items-center justify-center">
+          <i data-lucide="badge-dollar-sign" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <h3 class="font-bold text-sm">Quick Adjust Standard Fee</h3>
+          <p class="text-[10px] text-slate-300">${service.ServiceName} (${service.ServiceCode})</p>
+        </div>
+      </div>
+      <button onclick="closeModal()" class="text-slate-300 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+
+    <form onsubmit="handleSaveQuickFee(event, '${service.ServiceID}')" class="p-5 space-y-4 text-xs">
+      <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between">
+        <div>
+          <span class="text-[11px] text-slate-500 font-semibold uppercase">Category / Unit</span>
+          <p class="font-bold text-slate-800 text-xs">${service.Category} &bull; ${service.BillingUnit || 'Per Unit'}</p>
+        </div>
+        <div class="text-right">
+          <span class="text-[11px] text-slate-500 font-semibold uppercase">Current Billable Fee</span>
+          <p class="font-mono font-bold text-emerald-700 text-sm">$${currentPrice.toFixed(2)}</p>
+        </div>
+      </div>
+
+      <div>
+        <label class="block font-bold text-slate-800 text-xs mb-1">New Standard Fee ($ USD) *</label>
+        <div class="relative flex items-center">
+          <span class="absolute left-3 text-slate-500 font-bold text-base">$</span>
+          <input type="number" id="quick-fee-input" step="0.01" min="0" value="${currentPrice.toFixed(2)}" required class="w-full pl-8 pr-3 py-2 text-lg font-mono font-bold border-2 border-emerald-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-200">
+        </div>
+      </div>
+
+      <!-- Quick adjustment pills -->
+      <div>
+        <label class="block font-semibold text-slate-600 text-[11px] mb-1.5">Quick Step Adjustments:</label>
+        <div class="grid grid-cols-6 gap-1.5">
+          <button type="button" onclick="adjustQuickFeeInput(-50)" class="py-1 bg-slate-100 hover:bg-slate-200 rounded text-center font-mono font-semibold text-slate-700 transition cursor-pointer">-$50</button>
+          <button type="button" onclick="adjustQuickFeeInput(-10)" class="py-1 bg-slate-100 hover:bg-slate-200 rounded text-center font-mono font-semibold text-slate-700 transition cursor-pointer">-$10</button>
+          <button type="button" onclick="adjustQuickFeeInput(-5)" class="py-1 bg-slate-100 hover:bg-slate-200 rounded text-center font-mono font-semibold text-slate-700 transition cursor-pointer">-$5</button>
+          <button type="button" onclick="adjustQuickFeeInput(5)" class="py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded text-center font-mono font-semibold transition cursor-pointer">+$5</button>
+          <button type="button" onclick="adjustQuickFeeInput(10)" class="py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded text-center font-mono font-semibold transition cursor-pointer">+$10</button>
+          <button type="button" onclick="adjustQuickFeeInput(50)" class="py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded text-center font-mono font-semibold transition cursor-pointer">+$50</button>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t flex justify-end items-center gap-2">
+        <button type="button" onclick="closeModal()" class="px-3.5 py-1.5 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-md font-medium transition cursor-pointer">Cancel</button>
+        <button type="submit" class="px-5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-md shadow-sm transition flex items-center gap-1.5 cursor-pointer">
+          <i data-lucide="check" class="w-3.5 h-3.5"></i> Save Updated Fee
+        </button>
+      </div>
+    </form>
+  `, 'max-w-md');
+}
+
+function adjustQuickFeeInput(delta) {
+  const input = document.getElementById('quick-fee-input');
+  if (input) {
+    const val = Math.max(0, parseFloat(input.value || 0) + delta);
+    input.value = val.toFixed(2);
+  }
+}
+
+function handleSaveQuickFee(e, serviceId) {
+  e.preventDefault();
+  const input = document.getElementById('quick-fee-input');
+  if (!input) return;
+  const newPrice = parseFloat(input.value);
+  if (isNaN(newPrice) || newPrice < 0) {
+    showToast('Please enter a valid positive fee amount', 'error');
+    return;
+  }
+
+  const updated = DAL.update('Services', serviceId, { Price: newPrice });
+  if (updated) {
+    // If it's a diagnostic test, also update matching LaboratoryTests record
+    if (updated.Category === 'Diagnostic Investigation') {
+      const allTests = DAL.find('LaboratoryTests') || [];
+      const match = allTests.find(t => t.TestCode === updated.ServiceCode || t.TestName === updated.ServiceName);
+      if (match) {
+        DAL.update('LaboratoryTests', match.TestID, { Cost: newPrice });
+      }
+    }
+    showToast(`Successfully updated fee for "${updated.ServiceName}" to $${newPrice.toFixed(2)}`, 'success');
+    closeModal();
+    renderMainView();
+  }
+}
+
+function toggleServiceStatus(serviceId) {
+  const service = DAL.findById('Services', serviceId);
+  if (!service) return;
+  const newStatus = service.Status === 'Active' ? 'Inactive' : 'Active';
+  DAL.update('Services', serviceId, { Status: newStatus });
+  showToast(`Service "${service.ServiceName}" is now ${newStatus}`, 'info');
+  renderMainView();
+}
+
+function deleteService(serviceId) {
+  const service = DAL.findById('Services', serviceId);
+  if (!service) return;
+  if (confirm(`Are you sure you want to deactivate/delete service "${service.ServiceName}" (${service.ServiceCode})?`)) {
+    DAL.delete('Services', serviceId);
+    showToast(`Service "${service.ServiceName}" deactivated successfully`, 'info');
+    renderMainView();
+  }
+}
+
+function openCreateServiceModal() {
+  const depts = DAL.find('Departments') || [];
+  const allServices = DAL.find('Services') || [];
+  const nextNum = allServices.length + 1;
+  const suggestedCode = `SRV-${String(nextNum).padStart(3, '0')}`;
+
+  openModal(`
+    <div class="px-6 py-4 bg-[#002050] text-white flex justify-between items-center">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+          <i data-lucide="plus-circle" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h3 class="font-bold text-sm">Add New Hospital Service / Fee Item</h3>
+          <p class="text-[11px] text-slate-300">Register new billable item for IPD ward, investigation order, clinic or OT</p>
+        </div>
+      </div>
+      <button onclick="closeModal()" class="text-slate-300 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+
+    <form onsubmit="handleCreateService(event)" class="p-6 space-y-4 overflow-y-auto max-h-[75vh] custom-scrollbar text-xs">
+      
+      <!-- Preset Quick-Fill Bar -->
+      <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5">
+        <span class="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">1-Click Category Presets:</span>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button type="button" onclick="applyServicePreset('ipd_bed')" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-[11px] font-semibold transition cursor-pointer">
+            + IPD Ward Bed Preset
+          </button>
+          <button type="button" onclick="applyServicePreset('ipd_round')" class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-[11px] font-semibold transition cursor-pointer">
+            + Inpatient Doctor Round Preset
+          </button>
+          <button type="button" onclick="applyServicePreset('lab_inv')" class="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded text-[11px] font-semibold transition cursor-pointer">
+            + Lab Investigation Preset
+          </button>
+          <button type="button" onclick="applyServicePreset('rad_inv')" class="px-2.5 py-1 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 border border-cyan-200 rounded text-[11px] font-semibold transition cursor-pointer">
+            + Radiology Scan Preset
+          </button>
+          <button type="button" onclick="applyServicePreset('opd_consult')" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[11px] font-semibold transition cursor-pointer">
+            + OPD Consultation Preset
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Service Code *</label>
+          <input type="text" id="srv-code" value="${suggestedCode}" required class="w-full border border-slate-300 rounded p-2 font-mono font-semibold uppercase">
+        </div>
+        <div class="md:col-span-2">
+          <label class="block font-semibold text-slate-700 mb-1">Service Name *</label>
+          <input type="text" id="srv-name" required placeholder="e.g. ICU Isolation Bed Daily Rate, MRI Lumbar Spine" class="w-full border border-slate-300 rounded p-2 font-semibold">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Primary Category *</label>
+          <select id="srv-category" required class="w-full border border-slate-300 rounded p-2 font-medium">
+            <option value="IPD & Inpatient Care">IPD & Inpatient Care</option>
+            <option value="Diagnostic Investigation">Diagnostic Investigation</option>
+            <option value="OPD & Emergency">OPD & Emergency</option>
+            <option value="Surgical & OT">Surgical & OT</option>
+            <option value="Nursing & Therapy">Nursing & Therapy</option>
+          </select>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">SubCategory Classification *</label>
+          <input type="text" id="srv-subcategory" required placeholder="e.g. Ward Bed Fee, Laboratory Pathology, Radiology Imaging" class="w-full border border-slate-300 rounded p-2">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Department</label>
+          <select id="srv-department" class="w-full border border-slate-300 rounded p-2">
+            <option value="General Medicine|DEP-001">General Medicine (DEP-001)</option>
+            <option value="Cardiology|DEP-002">Cardiology (DEP-002)</option>
+            <option value="Pediatrics|DEP-003">Pediatrics (DEP-003)</option>
+            <option value="Orthopedics & Surgery|DEP-004">Orthopedics & Surgery (DEP-004)</option>
+            <option value="Endocrinology|DEP-005">Endocrinology (DEP-005)</option>
+            <option value="Pathology Diagnostics|DEP-001">Pathology Diagnostics</option>
+            <option value="Diagnostic Radiology|DEP-001">Diagnostic Radiology</option>
+            <option value="Operation Theater|DEP-004">Operation Theater</option>
+            <option value="Nursing Administration|DEP-001">Nursing Administration</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Standard Billable Fee ($) *</label>
+          <input type="number" id="srv-price" step="0.01" min="0" required placeholder="0.00" class="w-full border-2 border-emerald-400 rounded p-2 font-mono font-bold text-sm">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Direct Hospital Cost ($)</label>
+          <input type="number" id="srv-cost" step="0.01" min="0" placeholder="0.00" class="w-full border border-slate-300 rounded p-2 font-mono">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Billing Unit *</label>
+          <select id="srv-unit" required class="w-full border border-slate-300 rounded p-2">
+            <option value="Per Day">Per Day</option>
+            <option value="Per Order">Per Order</option>
+            <option value="Per Study">Per Study</option>
+            <option value="Per Consultation">Per Consultation</option>
+            <option value="Per Procedure">Per Procedure</option>
+            <option value="Per Treatment">Per Treatment</option>
+            <option value="Per Set">Per Set</option>
+            <option value="Per Hour">Per Hour</option>
+          </select>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Tax Status</label>
+          <select id="srv-tax" class="w-full border border-slate-300 rounded p-2">
+            <option value="0.05">5% VAT / Healthcare Tax</option>
+            <option value="0.00">0% Tax Exempt</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label class="block font-semibold text-slate-700 mb-1">Description / Clinical Specifications</label>
+        <textarea id="srv-desc" rows="2" placeholder="Clinical inclusions, protocol requirements, equipment involved..." class="w-full border border-slate-300 rounded p-2"></textarea>
+      </div>
+
+      <div class="pt-4 border-t flex justify-end items-center gap-2">
+        <button type="button" onclick="closeModal()" class="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded font-semibold transition cursor-pointer">Cancel</button>
+        <button type="submit" class="px-6 py-2 bg-[#0078d4] hover:bg-[#106ebe] text-white font-bold rounded shadow-sm transition flex items-center gap-1.5 cursor-pointer">
+          <i data-lucide="check" class="w-4 h-4"></i> Create Service
+        </button>
+      </div>
+    </form>
+  `, 'max-w-2xl');
+}
+
+function applyServicePreset(type) {
+  const code = document.getElementById('srv-code');
+  const name = document.getElementById('srv-name');
+  const cat = document.getElementById('srv-category');
+  const subcat = document.getElementById('srv-subcategory');
+  const price = document.getElementById('srv-price');
+  const cost = document.getElementById('srv-cost');
+  const unit = document.getElementById('srv-unit');
+  const desc = document.getElementById('srv-desc');
+
+  if (type === 'ipd_bed') {
+    if (code) code.value = 'IPD-BED-ISO';
+    if (name) name.value = 'Negative-Pressure Isolation Bed Daily Rate';
+    if (cat) cat.value = 'IPD & Inpatient Care';
+    if (subcat) subcat.value = 'Ward Bed Fee';
+    if (price) price.value = '210.00';
+    if (cost) cost.value = '90.00';
+    if (unit) unit.value = 'Per Day';
+    if (desc) desc.value = 'Inpatient airborne isolation room bed with dedicated HEPA exhaust filtration and contact barrier precautions.';
+  } else if (type === 'ipd_round') {
+    if (code) code.value = 'IPD-RND-SPEC';
+    if (name) name.value = 'Subspecialty Physician Bedside Ward Consultation';
+    if (cat) cat.value = 'IPD & Inpatient Care';
+    if (subcat) subcat.value = 'Physician Rounds';
+    if (price) price.value = '75.00';
+    if (cost) cost.value = '30.00';
+    if (unit) unit.value = 'Per Round';
+    if (desc) desc.value = 'Formal inpatient specialty consultation request, clinical diagnostic review, and tailored management notes.';
+  } else if (type === 'lab_inv') {
+    if (code) code.value = 'INV-LAB-CULT';
+    if (name) name.value = 'Blood Culture & Antimicrobial Susceptibility (Aerobic & Anaerobic)';
+    if (cat) cat.value = 'Diagnostic Investigation';
+    if (subcat) subcat.value = 'Laboratory Pathology';
+    if (price) price.value = '48.00';
+    if (cost) cost.value = '15.00';
+    if (unit) unit.value = 'Per Order';
+    if (desc) desc.value = 'Dual automated blood culture bottles incubated for 5 days with organism identification and MIC antibiotic susceptibility.';
+  } else if (type === 'rad_inv') {
+    if (code) code.value = 'INV-RAD-MRI';
+    if (name) name.value = 'MRI Spine (Lumbar / Cervical Non-Contrast)';
+    if (cat) cat.value = 'Diagnostic Investigation';
+    if (subcat) subcat.value = 'Radiology Imaging';
+    if (price) price.value = '420.00';
+    if (cost) cost.value = '150.00';
+    if (unit) unit.value = 'Per Study';
+    if (desc) desc.value = 'High-field magnetic resonance imaging of vertebral bodies, intervertebral discs, nerve roots, and spinal canal.';
+  } else if (type === 'opd_consult') {
+    if (code) code.value = 'OPD-CONS-FAST';
+    if (name) name.value = 'Express Rapid Clinic OPD Consultation';
+    if (cat) cat.value = 'OPD & Emergency';
+    if (subcat) subcat.value = 'Consultation Fee';
+    if (price) price.value = '30.00';
+    if (cost) cost.value = '10.00';
+    if (unit) unit.value = 'Per Consultation';
+    if (desc) desc.value = 'Fast-track walk-in evaluation for non-complex minor ailments and direct prescription refills.';
+  }
+}
+
+function handleCreateService(e) {
+  e.preventDefault();
+  const code = document.getElementById('srv-code').value.trim();
+  const name = document.getElementById('srv-name').value.trim();
+  const cat = document.getElementById('srv-category').value;
+  const subcat = document.getElementById('srv-subcategory').value.trim();
+  const deptVal = document.getElementById('srv-department').value;
+  const [deptName, deptId] = deptVal.split('|');
+  const price = parseFloat(document.getElementById('srv-price').value);
+  const cost = parseFloat(document.getElementById('srv-cost').value || 0);
+  const unit = document.getElementById('srv-unit').value;
+  const tax = parseFloat(document.getElementById('srv-tax').value || 0);
+  const desc = document.getElementById('srv-desc').value.trim();
+
+  if (!code || !name) {
+    showToast('Service Code and Name are required.', 'error');
+    return;
+  }
+  if (isNaN(price) || price < 0) {
+    showToast('Please enter a valid billable fee amount.', 'error');
+    return;
+  }
+
+  const newService = {
+    ServiceCode: code,
+    ServiceName: name,
+    Category: cat,
+    SubCategory: subcat,
+    DepartmentID: deptId || 'DEP-001',
+    DepartmentName: deptName || 'General Medicine',
+    Price: price,
+    Cost: cost,
+    BillingUnit: unit,
+    TaxRate: tax,
+    Status: 'Active',
+    Description: desc
+  };
+
+  const created = DAL.create('Services', newService);
+
+  // If this is a Diagnostic Investigation, synchronize with LaboratoryTests
+  if (cat === 'Diagnostic Investigation') {
+    const existingLab = DAL.find('LaboratoryTests', { TestCode: code })[0];
+    if (!existingLab) {
+      DAL.create('LaboratoryTests', {
+        TestName: name,
+        TestCode: code,
+        Category: subcat.includes('Radiology') ? 'Imaging' : (subcat.includes('Cardio') ? 'Cardiology' : 'General'),
+        Description: desc,
+        NormalRange: 'Reference parameters within physiological limits',
+        Unit: 'Study',
+        Cost: price,
+        Status: 'Active'
+      });
+    }
+  }
+
+  showToast(`Successfully registered service: "${name}" ($${price.toFixed(2)})`, 'success');
+  closeModal();
+  renderMainView();
+}
+
+function openEditServiceModal(serviceId) {
+  const service = DAL.findById('Services', serviceId);
+  if (!service) {
+    showToast('Service not found', 'error');
+    return;
+  }
+
+  openModal(`
+    <div class="px-6 py-4 bg-[#002050] text-white flex justify-between items-center">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded bg-blue-500/20 text-blue-300 flex items-center justify-center">
+          <i data-lucide="edit-3" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h3 class="font-bold text-sm">Edit Service Specifications</h3>
+          <p class="text-[11px] text-slate-300">${service.ServiceName} (${service.ServiceCode})</p>
+        </div>
+      </div>
+      <button onclick="closeModal()" class="text-slate-300 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+
+    <form onsubmit="handleUpdateService(event, '${service.ServiceID}')" class="p-6 space-y-4 overflow-y-auto max-h-[75vh] custom-scrollbar text-xs">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Service Code *</label>
+          <input type="text" id="edit-srv-code" value="${service.ServiceCode}" required class="w-full border border-slate-300 rounded p-2 font-mono font-semibold uppercase">
+        </div>
+        <div class="md:col-span-2">
+          <label class="block font-semibold text-slate-700 mb-1">Service Name *</label>
+          <input type="text" id="edit-srv-name" value="${service.ServiceName}" required class="w-full border border-slate-300 rounded p-2 font-semibold">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Primary Category *</label>
+          <select id="edit-srv-category" required class="w-full border border-slate-300 rounded p-2 font-medium">
+            <option value="IPD & Inpatient Care" ${service.Category === 'IPD & Inpatient Care' ? 'selected' : ''}>IPD & Inpatient Care</option>
+            <option value="Diagnostic Investigation" ${service.Category === 'Diagnostic Investigation' ? 'selected' : ''}>Diagnostic Investigation</option>
+            <option value="OPD & Emergency" ${service.Category === 'OPD & Emergency' ? 'selected' : ''}>OPD & Emergency</option>
+            <option value="Surgical & OT" ${service.Category === 'Surgical & OT' ? 'selected' : ''}>Surgical & OT</option>
+            <option value="Nursing & Therapy" ${service.Category === 'Nursing & Therapy' ? 'selected' : ''}>Nursing & Therapy</option>
+          </select>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">SubCategory Classification *</label>
+          <input type="text" id="edit-srv-subcategory" value="${service.SubCategory || ''}" required class="w-full border border-slate-300 rounded p-2">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Department</label>
+          <input type="text" id="edit-srv-dept" value="${service.DepartmentName || ''}" class="w-full border border-slate-300 rounded p-2">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Standard Billable Fee ($) *</label>
+          <input type="number" id="edit-srv-price" step="0.01" min="0" value="${parseFloat(service.Price || 0).toFixed(2)}" required class="w-full border-2 border-emerald-400 rounded p-2 font-mono font-bold text-sm">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Direct Hospital Cost ($)</label>
+          <input type="number" id="edit-srv-cost" step="0.01" min="0" value="${parseFloat(service.Cost || 0).toFixed(2)}" class="w-full border border-slate-300 rounded p-2 font-mono">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Billing Unit *</label>
+          <input type="text" id="edit-srv-unit" value="${service.BillingUnit || 'Per Unit'}" required class="w-full border border-slate-300 rounded p-2 font-medium">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Status</label>
+          <select id="edit-srv-status" class="w-full border border-slate-300 rounded p-2 font-semibold">
+            <option value="Active" ${service.Status === 'Active' ? 'selected' : ''}>Active</option>
+            <option value="Inactive" ${service.Status === 'Inactive' ? 'selected' : ''}>Inactive</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label class="block font-semibold text-slate-700 mb-1">Description / Clinical Specifications</label>
+        <textarea id="edit-srv-desc" rows="3" class="w-full border border-slate-300 rounded p-2">${service.Description || ''}</textarea>
+      </div>
+
+      <div class="pt-4 border-t flex justify-end items-center gap-2">
+        <button type="button" onclick="closeModal()" class="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded font-semibold transition cursor-pointer">Cancel</button>
+        <button type="submit" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded shadow-sm transition flex items-center gap-1.5 cursor-pointer">
+          <i data-lucide="check" class="w-4 h-4"></i> Save Changes
+        </button>
+      </div>
+    </form>
+  `, 'max-w-2xl');
+}
+
+function handleUpdateService(e, serviceId) {
+  e.preventDefault();
+  const code = document.getElementById('edit-srv-code').value.trim();
+  const name = document.getElementById('edit-srv-name').value.trim();
+  const cat = document.getElementById('edit-srv-category').value;
+  const subcat = document.getElementById('edit-srv-subcategory').value.trim();
+  const dept = document.getElementById('edit-srv-dept').value.trim();
+  const price = parseFloat(document.getElementById('edit-srv-price').value);
+  const cost = parseFloat(document.getElementById('edit-srv-cost').value || 0);
+  const unit = document.getElementById('edit-srv-unit').value.trim();
+  const status = document.getElementById('edit-srv-status').value;
+  const desc = document.getElementById('edit-srv-desc').value.trim();
+
+  if (!code || !name) {
+    showToast('Service Code and Name are required.', 'error');
+    return;
+  }
+  if (isNaN(price) || price < 0) {
+    showToast('Please enter a valid billable fee amount.', 'error');
+    return;
+  }
+
+  const updates = {
+    ServiceCode: code,
+    ServiceName: name,
+    Category: cat,
+    SubCategory: subcat,
+    DepartmentName: dept,
+    Price: price,
+    Cost: cost,
+    BillingUnit: unit,
+    Status: status,
+    Description: desc
+  };
+
+  const updated = DAL.update('Services', serviceId, updates);
+  if (updated) {
+    // If Diagnostic Investigation, sync with LaboratoryTests
+    if (cat === 'Diagnostic Investigation') {
+      const allTests = DAL.find('LaboratoryTests') || [];
+      const match = allTests.find(t => t.TestCode === code || t.TestName === name);
+      if (match) {
+        DAL.update('LaboratoryTests', match.TestID, { Cost: price, TestName: name, Description: desc, Status: status });
+      }
+    }
+    showToast(`Saved updates for service: "${name}"`, 'success');
+    closeModal();
+    renderMainView();
+  }
+}
+
 function renderFollowupsGrid() {
   const followups = DAL.find('FollowUps');
   const filtered = filterAndSortRecords(followups, ['FollowUpDate', 'Reason', 'Status']);
@@ -5124,6 +6134,10 @@ function openCreateModal(entityType) {
     openNewSterileTrayModal();
     return;
   }
+  if (entityType === 'service' || entityType === 'services') {
+    openCreateServiceModal();
+    return;
+  }
 
   const patients = DAL.find('Patients');
   const doctors = DAL.find('Doctors');
@@ -5384,7 +6398,166 @@ function calculateEndTime(startStr) {
 // Stage 4: Prescription (Medication Orders & Stock Depletion)
 // Stage 5: Discharge (Disposition, Summary, Follow-up & Automated Billing)
 
-function openNewVisitModal() {
+function setModalCaseType(caseType) {
+  const input = document.getElementById('new-opd-case-type');
+  const btnNew = document.getElementById('btn-case-new');
+  const btnOld = document.getElementById('btn-case-old');
+  const badge = document.getElementById('case-type-badge-preview');
+  const typeSelect = document.getElementById('new-opd-type');
+
+  if (input) input.value = caseType;
+
+  if (caseType === 'New Case') {
+    if (btnNew) {
+      btnNew.className = 'p-2.5 rounded-md border text-left transition flex items-start gap-2 bg-white border-emerald-500 shadow-xs ring-2 ring-emerald-500/20';
+    }
+    if (btnOld) {
+      btnOld.className = 'p-2.5 rounded-md border text-left transition flex items-start gap-2 bg-slate-50 border-slate-200 hover:border-blue-400';
+    }
+    if (badge) {
+      badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300';
+      badge.innerHTML = '✨ New Case Selected';
+    }
+    if (typeSelect && (!typeSelect.value || typeSelect.value === 'Follow-up Review')) {
+      typeSelect.value = 'Initial Consultation';
+    }
+  } else {
+    if (btnOld) {
+      btnOld.className = 'p-2.5 rounded-md border text-left transition flex items-start gap-2 bg-white border-blue-500 shadow-xs ring-2 ring-blue-500/20';
+    }
+    if (btnNew) {
+      btnNew.className = 'p-2.5 rounded-md border text-left transition flex items-start gap-2 bg-slate-50 border-slate-200 hover:border-emerald-400';
+    }
+    if (badge) {
+      badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-300';
+      badge.innerHTML = '🔄 Old Case Selected (Re-visit)';
+    }
+    if (typeSelect && (!typeSelect.value || typeSelect.value === 'Initial Consultation')) {
+      typeSelect.value = 'Follow-up Review';
+    }
+  }
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function handleOpdPatientSelect(patientId) {
+  const preview = document.getElementById('opd-patient-history-preview');
+  if (!preview) return;
+
+  if (!patientId) {
+    preview.className = 'hidden';
+    preview.innerHTML = '';
+    return;
+  }
+
+  const pat = DAL.findById('Patients', patientId);
+  if (!pat) return;
+
+  const allVisits = DAL.find('Visits', { PatientID: patientId });
+  // Sort descending by date
+  allVisits.sort((a, b) => (b.VisitDate || '').localeCompare(a.VisitDate || ''));
+
+  if (allVisits.length > 0) {
+    // Patient used to come for visit before -> Old Case
+    setModalCaseType('Old Case');
+    const lastVisit = allVisits[0];
+    const lastDoc = DAL.findById('Doctors', lastVisit.DoctorID) || {};
+
+    preview.className = 'rounded-md border border-blue-200 bg-blue-50/70 p-3 space-y-2 mt-2';
+    preview.innerHTML = `
+      <div class="flex items-center justify-between text-blue-950 font-bold">
+        <span class="flex items-center gap-1.5"><i data-lucide="history" class="w-4 h-4 text-blue-600"></i> Returning Patient (ករណីចាស់): Patient used to come for visit (${allVisits.length} previous visits on file)</span>
+        <span class="px-2 py-0.5 rounded text-[10px] bg-blue-200 text-blue-900 font-mono">MRN: ${pat.PatientNumber}</span>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-700 bg-white p-2.5 rounded border border-blue-100">
+        <div>
+          <span class="text-slate-400 block text-[10px] uppercase font-semibold">Most Recent Encounter</span>
+          <span class="font-bold text-slate-900">${lastVisit.VisitDate} (${lastVisit.VisitID})</span>
+          <span class="text-slate-500 block">Doctor: ${lastDoc.DoctorName || lastVisit.DoctorID}</span>
+        </div>
+        <div>
+          <span class="text-slate-400 block text-[10px] uppercase font-semibold">Prior Diagnosis</span>
+          <span class="font-bold text-indigo-700">${lastVisit.DiagnosisSummary || 'In Progress'}</span>
+          <span class="text-slate-500 block truncate">Complaint: ${lastVisit.ChiefComplaint || 'Routine assessment'}</span>
+        </div>
+      </div>
+      <div class="flex items-center justify-between pt-1 flex-wrap gap-2">
+        <div class="flex items-center gap-1.5">
+          <label class="font-semibold text-slate-700 text-[11px]">Link Prior Encounter:</label>
+          <select id="new-opd-prev-visit" class="border border-slate-300 rounded px-2 py-1 text-[11px] bg-white font-mono">
+            ${allVisits.map(v => `<option value="${v.VisitID}">${v.VisitID} (${v.VisitDate}) - ${v.DiagnosisSummary || v.ChiefComplaint}</option>`).join('')}
+          </select>
+        </div>
+        <button type="button" onclick="prefillOpdFromPreviousVisit()" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold text-[11px] flex items-center gap-1 shadow-2xs transition">
+          <i data-lucide="copy" class="w-3.5 h-3.5"></i> Pre-fill Complaint from Prior Visit
+        </button>
+      </div>
+    `;
+  } else {
+    // Brand new patient -> New Case
+    setModalCaseType('New Case');
+    preview.className = 'rounded-md border border-emerald-200 bg-emerald-50/70 p-3 flex items-center gap-2.5 text-emerald-950 mt-2';
+    preview.innerHTML = `
+      <i data-lucide="sparkles" class="w-5 h-5 text-emerald-600 shrink-0"></i>
+      <div>
+        <div class="font-bold text-xs">First-Time Patient Intake (ករណីថ្មី - New Case)</div>
+        <div class="text-[11px] text-emerald-800">No prior OPD visits found for ${pat.FirstName} ${pat.LastName}. Baseline physical assessment and diagnostic record will be established.</div>
+      </div>
+    `;
+  }
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function prefillOpdFromPreviousVisit() {
+  const patientId = document.getElementById('new-opd-patient').value;
+  const selectPrev = document.getElementById('new-opd-prev-visit');
+  const prevId = selectPrev ? selectPrev.value : null;
+
+  if (!patientId) {
+    showToast('Please select a patient first.', 'warning');
+    return;
+  }
+  const allVisits = DAL.find('Visits', { PatientID: patientId });
+  const prior = prevId ? allVisits.find(v => v.VisitID === prevId) : allVisits[0];
+
+  if (!prior) {
+    showToast('No prior encounter found to copy from.', 'info');
+    return;
+  }
+
+  const complaintInput = document.getElementById('new-opd-complaint');
+  if (complaintInput) {
+    complaintInput.value = `Follow-up re-evaluation for ${prior.DiagnosisSummary || prior.ChiefComplaint}. Monitoring clinical symptoms and response to therapy.`;
+  }
+  const typeSelect = document.getElementById('new-opd-type');
+  if (typeSelect) {
+    typeSelect.value = 'Follow-up Review';
+  }
+  showToast(`Chief complaint populated from prior visit ${prior.VisitID}!`, 'success');
+}
+
+function copyPreviousOpdDiagnosis(currentVisitId, priorVisitId) {
+  if (!priorVisitId) {
+    showToast('No previous visit linked to copy diagnosis.', 'info');
+    return;
+  }
+  const prior = DAL.findById('Visits', priorVisitId);
+  if (!prior) {
+    showToast('Prior encounter record not found.', 'error');
+    return;
+  }
+  const priorDx = DAL.find('Diagnoses', { VisitID: priorVisitId })[0] || {};
+  const diagField = document.getElementById('opd-doc-diagnosis');
+  const icdField = document.getElementById('opd-doc-icd');
+  const treatField = document.getElementById('opd-doc-treatment');
+
+  if (diagField) diagField.value = prior.DiagnosisSummary || priorDx.Diagnosis || '';
+  if (icdField) icdField.value = priorDx.DiagnosisCode || 'I10';
+  if (treatField && prior.TreatmentPlan) treatField.value = prior.TreatmentPlan;
+
+  showToast(`Diagnosis pre-filled from prior visit ${priorVisitId}!`, 'success');
+}
+
+function openNewVisitModal(preselectedPatientId = null, initialCaseType = null) {
   const patients = DAL.find('Patients');
   const doctors = DAL.find('Doctors');
   const visits = DAL.find('Visits');
@@ -5397,6 +6570,41 @@ function openNewVisitModal() {
       <button onclick="closeModal()" class="text-slate-300 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
     </div>
     <form onsubmit="handleStartNewOpdEncounter(event)" class="p-6 space-y-4 text-xs overflow-y-auto max-h-[75vh] custom-scrollbar">
+      
+      <!-- Interactive Case Classification Selector -->
+      <div class="bg-slate-100 p-2.5 rounded-lg border border-slate-300/80">
+        <div class="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+          <span class="flex items-center gap-1.5"><i data-lucide="tag" class="w-3.5 h-3.5 text-teal-600"></i> Case Classification / Visit Nature *</span>
+          <span id="case-type-badge-preview" class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">✨ New Case Selected</span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <button type="button" id="btn-case-new" onclick="setModalCaseType('New Case')" class="p-2.5 rounded-md border text-left transition flex items-start gap-2 bg-white border-emerald-500 shadow-xs ring-2 ring-emerald-500/20">
+            <div class="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
+              <i data-lucide="sparkles" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <div class="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                New Case (ករណីថ្មី)
+              </div>
+              <p class="text-[10px] text-slate-500 leading-tight mt-0.5">First visit for this illness / initial outpatient consultation</p>
+            </div>
+          </button>
+
+          <button type="button" id="btn-case-old" onclick="setModalCaseType('Old Case')" class="p-2.5 rounded-md border text-left transition flex items-start gap-2 bg-slate-50 border-slate-200 hover:border-blue-400">
+            <div class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
+              <i data-lucide="history" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <div class="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                Old Case (ករណីចាស់)
+              </div>
+              <p class="text-[10px] text-slate-500 leading-tight mt-0.5">Patient used to come for visit / Follow-up / Chronic review / Re-visit</p>
+            </div>
+          </button>
+        </div>
+        <input type="hidden" id="new-opd-case-type" value="New Case">
+      </div>
+
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Encounter Number (Generated)</label>
@@ -5406,12 +6614,19 @@ function openNewVisitModal() {
           <label class="block font-semibold text-slate-700 mb-1">Encounter Date *</label>
           <input type="date" id="new-opd-date" value="${today}" required class="w-full border border-slate-300 rounded p-2 font-mono">
         </div>
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Select Patient *</label>
-          <select id="new-opd-patient" required class="w-full border border-slate-300 rounded p-2">
+        <div class="col-span-2">
+          <label class="block font-semibold text-slate-700 mb-1">Select Patient * (Search or Pick)</label>
+          <select id="new-opd-patient" required onchange="handleOpdPatientSelect(this.value)" class="w-full border border-slate-300 rounded p-2">
             <option value="">-- Choose Patient --</option>
-            ${patients.map(p => `<option value="${p.PatientID}">${p.FirstName} ${p.LastName} (${p.PatientNumber}) &bull; ${p.Gender}, Age ${p.Age}</option>`).join('')}
+            ${patients.map(p => {
+              const pastVisits = visits.filter(v => v.PatientID === p.PatientID);
+              const tag = pastVisits.length > 0 ? `[⭐ Old Case • ${pastVisits.length} prior visits]` : `[✨ New Case]`;
+              const isSelected = preselectedPatientId === p.PatientID ? 'selected' : '';
+              return `<option value="${p.PatientID}" ${isSelected}>${p.FirstName} ${p.LastName} (${p.PatientNumber}) &bull; ${tag} &bull; ${p.Gender}, Age ${p.Age}</option>`;
+            }).join('')}
           </select>
+          <!-- Dynamic Patient History Preview Card -->
+          <div id="opd-patient-history-preview" class="hidden"></div>
         </div>
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Attending Physician *</label>
@@ -5425,12 +6640,14 @@ function openNewVisitModal() {
           <select id="new-opd-type" class="w-full border border-slate-300 rounded p-2">
             <option value="Initial Consultation" selected>Initial Consultation</option>
             <option value="Follow-up Review">Follow-up Review</option>
+            <option value="Chronic Disease Monitoring">Chronic Disease Monitoring</option>
+            <option value="Prescription Refill">Prescription Refill</option>
             <option value="Urgent / Walk-in">Urgent / Walk-in</option>
             <option value="Pre-operative Clearance">Pre-operative Clearance</option>
             <option value="Routine Health Check">Routine Health Check</option>
           </select>
         </div>
-        <div>
+        <div class="col-span-2">
           <label class="block font-semibold text-slate-700 mb-1">Initial Triage Acuity *</label>
           <select id="new-opd-acuity" class="w-full border border-slate-300 rounded p-2 font-medium">
             <option value="Level 4 - Less Urgent" selected>Level 4 - Less Urgent (Standard OPD Consultation)</option>
@@ -5458,6 +6675,12 @@ function openNewVisitModal() {
       </div>
     </form>
   `);
+
+  if (preselectedPatientId) {
+    handleOpdPatientSelect(preselectedPatientId);
+  } else if (initialCaseType) {
+    setModalCaseType(initialCaseType);
+  }
 }
 
 function handleStartNewOpdEncounter(e) {
@@ -5467,6 +6690,10 @@ function handleStartNewOpdEncounter(e) {
   const complaint = document.getElementById('new-opd-complaint').value.trim();
   const visitDate = document.getElementById('new-opd-date').value;
   const acuity = document.getElementById('new-opd-acuity') ? document.getElementById('new-opd-acuity').value : 'Level 4 - Less Urgent';
+  const caseType = document.getElementById('new-opd-case-type') ? document.getElementById('new-opd-case-type').value : 'New Case';
+  const prevVisitSelect = document.getElementById('new-opd-prev-visit');
+  const prevVisitId = (prevVisitSelect && caseType === 'Old Case') ? prevVisitSelect.value : '';
+  const encType = document.getElementById('new-opd-type') ? document.getElementById('new-opd-type').value : 'Initial Consultation';
 
   const allVisits = DAL.find('Visits');
   const visitCount = allVisits.length + 1;
@@ -5477,6 +6704,9 @@ function handleStartNewOpdEncounter(e) {
     PatientID: patId,
     DoctorID: docId,
     VisitDate: visitDate,
+    CaseType: caseType,
+    PreviousVisitID: prevVisitId,
+    EncounterType: encType,
     ChiefComplaint: complaint,
     ClinicalNotes: '',
     DiagnosisSummary: '',
@@ -5491,7 +6721,7 @@ function handleStartNewOpdEncounter(e) {
 
   DAL.create('Visits', visitObj);
   closeModal();
-  showToast(`Encounter ${newVisitId} created! Starting Stage 1: Triage & Vital Signs.`, 'success');
+  showToast(`Encounter ${newVisitId} (${caseType}) registered! Starting Stage 1: Triage & Vital Signs.`, 'success');
   renderMainView();
   openOpdWorkflow(newVisitId, 'Triage');
 }
@@ -5580,6 +6810,10 @@ function openOpdWorkflow(visitId, stageOverride) {
               <span class="text-xs uppercase tracking-wider text-teal-300 font-semibold">OPD Clinical Encounter</span>
               <span class="text-xs bg-teal-900/80 px-2 py-0.5 rounded font-mono text-teal-200">${visit.VisitID}</span>
               <span class="px-2 py-0.5 rounded text-[10px] font-bold ${visit.VisitStatus === 'Completed' ? 'bg-slate-600 text-slate-200' : 'bg-emerald-500 text-white animate-pulse'}">${visit.VisitStatus}</span>
+              ${visit.CaseType === 'Old Case' ?
+                `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/30 text-blue-200 border border-blue-400/50 flex items-center gap-1 shadow-2xs" title="Patient used to come for visit before"><i data-lucide="history" class="w-3 h-3 text-blue-300"></i> Old Case (ករណីចាស់)</span>` :
+                `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/30 text-emerald-200 border border-emerald-400/50 flex items-center gap-1 shadow-2xs" title="First visit for this clinical condition"><i data-lucide="sparkles" class="w-3 h-3 text-emerald-300"></i> New Case (ករណីថ្មី)</span>`
+              }
             </div>
             <h2 class="text-base font-bold text-white flex items-center gap-2">
               ${pat.FirstName || 'Patient'} ${pat.LastName || ''}
@@ -5649,6 +6883,11 @@ function renderOpdStageContent(stage, visit, pat, doc, vitals, investigations, p
 // ----------------------------------------------------
 function renderOpdStage1_Triage(visit, pat, doc, vitals) {
   const currentBmi = vitals.BMI || (vitals.Weight && vitals.Height ? (vitals.Weight / ((vitals.Height / 100) * (vitals.Height / 100))).toFixed(1) : '22.8');
+  const pastVisits = DAL.find('Visits', { PatientID: visit.PatientID }).filter(v => v.VisitID !== visit.VisitID);
+  pastVisits.sort((a, b) => (b.VisitDate || '').localeCompare(a.VisitDate || ''));
+  const priorVisit = visit.PreviousVisitID ? DAL.findById('Visits', visit.PreviousVisitID) : (pastVisits[0] || null);
+  const priorVitals = priorVisit ? (DAL.find('VitalSigns', { VisitID: priorVisit.VisitID })[0] || null) : null;
+  const isOldCase = visit.CaseType === 'Old Case';
 
   return `
     <div class="space-y-4 max-w-4xl mx-auto text-xs">
@@ -5661,8 +6900,38 @@ function renderOpdStage1_Triage(visit, pat, doc, vitals) {
             <p class="text-[11px] text-blue-800">Nurse checks in patient, records baseline physiological parameters, and evaluates triage acuity.</p>
           </div>
         </div>
-        <span class="px-2.5 py-1 bg-blue-200 text-blue-900 rounded font-semibold text-[11px]">${visit.TriageAcuity || 'Triage Intake'}</span>
+        <div class="flex items-center gap-2">
+          <span class="px-2.5 py-1 rounded font-bold text-[11px] ${isOldCase ? 'bg-blue-200 text-blue-900 border border-blue-300' : 'bg-emerald-200 text-emerald-900 border border-emerald-300'}">
+            ${isOldCase ? '🔄 Old Case (Re-visit)' : '✨ New Case (1st Visit)'}
+          </span>
+          <span class="px-2.5 py-1 bg-blue-100 text-blue-900 rounded font-semibold text-[11px]">${visit.TriageAcuity || 'Triage Intake'}</span>
+        </div>
       </div>
+
+      <!-- Case Classification & Historical Continuity Info -->
+      ${isOldCase ? `
+        <div class="p-3 bg-blue-50/70 border border-blue-200 rounded-lg space-y-2">
+          <div class="flex items-center justify-between text-blue-950 font-bold">
+            <span class="flex items-center gap-1.5"><i data-lucide="history" class="w-4 h-4 text-blue-600"></i> Returning Patient (ករណីចាស់): Patient used to come for visit (${pastVisits.length} prior encounters on file)</span>
+            ${priorVisit ? `<span class="px-2 py-0.5 rounded text-[10px] bg-blue-200 text-blue-900 font-mono">Linked Prior: ${priorVisit.VisitID} (${priorVisit.VisitDate})</span>` : ''}
+          </div>
+          ${priorVitals ? `
+            <div class="bg-white p-2.5 rounded border border-blue-100 flex items-center justify-between flex-wrap gap-2 text-[11px] font-mono text-slate-700">
+              <span class="font-bold text-blue-900 font-sans flex items-center gap-1"><i data-lucide="arrow-left-right" class="w-3.5 h-3.5 text-blue-500"></i> Baseline Vitals from Last Visit (${priorVisit.VisitDate}):</span>
+              <span>BP: <strong class="text-slate-900">${priorVitals.BloodPressure || '120/80'}</strong></span>
+              <span>HR: <strong class="text-slate-900">${priorVitals.HeartRate || '72'}</strong> bpm</span>
+              <span>Temp: <strong class="text-slate-900">${priorVitals.Temperature || '36.8'}</strong>&deg;C</span>
+              <span>Weight: <strong class="text-slate-900">${priorVitals.Weight || '68'}</strong> kg</span>
+              <span>BMI: <strong class="text-slate-900">${priorVitals.BMI || '22.8'}</strong></span>
+            </div>
+          ` : ''}
+        </div>
+      ` : `
+        <div class="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-emerald-950">
+          <span class="font-semibold flex items-center gap-1.5"><i data-lucide="sparkles" class="w-4 h-4 text-emerald-600"></i> New Case (ករណីថ្មី): Initial OPD presentation. Establishing baseline physiological parameters.</span>
+          <span class="px-2 py-0.5 rounded text-[10px] bg-emerald-200 text-emerald-900 font-bold">1st Visit</span>
+        </div>
+      `}
 
       <form onsubmit="handleSaveOpdStage1(event, '${visit.VisitID}')" class="space-y-4">
         <!-- Triage & Baseline Vitals Card -->
@@ -5672,15 +6941,22 @@ function renderOpdStage1_Triage(visit, pat, doc, vitals) {
             <span class="text-xs font-mono font-bold text-emerald-700">BMI: ${currentBmi}</span>
           </h5>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Case Classification</label>
+              <select id="opd-triage-casetype" class="w-full border border-slate-300 rounded p-2 font-semibold">
+                <option value="New Case" ${visit.CaseType === 'New Case' ? 'selected' : ''}>✨ New Case (ករណីថ្មី)</option>
+                <option value="Old Case" ${visit.CaseType === 'Old Case' ? 'selected' : ''}>🔄 Old Case (ករណីចាស់)</option>
+              </select>
+            </div>
             <div>
               <label class="block font-semibold text-slate-700 mb-1">Triage Acuity Level *</label>
               <select id="opd-triage-level" required class="w-full border border-slate-300 rounded p-2 font-medium">
-                <option value="Level 4 - Less Urgent" selected>Level 4 - Less Urgent (Standard OPD Consultation)</option>
-                <option value="Level 3 - Urgent">Level 3 - Urgent (Moderate Distress / Severe Pain)</option>
-                <option value="Level 2 - Emergent">Level 2 - Emergent (High Risk / Vital Instability)</option>
-                <option value="Level 1 - Resuscitation">Level 1 - Resuscitation (Immediate Life Threat)</option>
-                <option value="Level 5 - Non-Urgent">Level 5 - Non-Urgent (Routine Refill / Follow-up)</option>
+                <option value="Level 4 - Less Urgent" ${visit.TriageAcuity === 'Level 4 - Less Urgent' ? 'selected' : ''}>Level 4 - Less Urgent (Standard OPD Consultation)</option>
+                <option value="Level 3 - Urgent" ${visit.TriageAcuity === 'Level 3 - Urgent' ? 'selected' : ''}>Level 3 - Urgent (Moderate Distress / Severe Pain)</option>
+                <option value="Level 2 - Emergent" ${visit.TriageAcuity === 'Level 2 - Emergent' ? 'selected' : ''}>Level 2 - Emergent (High Risk / Vital Instability)</option>
+                <option value="Level 1 - Resuscitation" ${visit.TriageAcuity === 'Level 1 - Resuscitation' ? 'selected' : ''}>Level 1 - Resuscitation (Immediate Life Threat)</option>
+                <option value="Level 5 - Non-Urgent" ${visit.TriageAcuity === 'Level 5 - Non-Urgent' ? 'selected' : ''}>Level 5 - Non-Urgent (Routine Refill / Follow-up)</option>
               </select>
             </div>
             <div>
@@ -5773,6 +7049,8 @@ function handleSaveOpdStage1(e, visitId) {
   const ht = parseFloat(document.getElementById('opd-vit-ht').value);
   const bmi = (wt / ((ht / 100) * (ht / 100))).toFixed(1);
   const complaint = document.getElementById('opd-triage-complaint').value.trim();
+  const caseType = document.getElementById('opd-triage-casetype') ? document.getElementById('opd-triage-casetype').value : (visit.CaseType || 'New Case');
+  const acuity = document.getElementById('opd-triage-level') ? document.getElementById('opd-triage-level').value : (visit.TriageAcuity || 'Level 4 - Less Urgent');
 
   const vitalsObj = {
     VisitID: visitId,
@@ -5799,6 +7077,8 @@ function handleSaveOpdStage1(e, visitId) {
 
   DAL.update('Visits', visitId, {
     ChiefComplaint: complaint,
+    CaseType: caseType,
+    TriageAcuity: acuity,
     OpdStage: 'Consultation',
     VisitStatus: 'In Consultation'
   });
@@ -5813,6 +7093,10 @@ function handleSaveOpdStage1(e, visitId) {
 function renderOpdStage2_Consultation(visit, pat, doc, vitals) {
   const needsInv = visit.NeedsInvestigation === 'Yes';
   const existingDx = DAL.find('Diagnoses', { VisitID: visit.VisitID })[0] || {};
+  const pastVisits = DAL.find('Visits', { PatientID: visit.PatientID }).filter(v => v.VisitID !== visit.VisitID);
+  pastVisits.sort((a, b) => (b.VisitDate || '').localeCompare(a.VisitDate || ''));
+  const isOldCase = visit.CaseType === 'Old Case' || pastVisits.length > 0;
+  const latestPriorVisit = pastVisits[0] || null;
 
   return `
     <div class="space-y-4 max-w-4xl mx-auto text-xs">
@@ -5825,8 +7109,60 @@ function renderOpdStage2_Consultation(visit, pat, doc, vitals) {
             <p class="text-[11px] text-purple-800">Doctor examines patient, documents symptoms, specifies ICD-10 diagnosis, and determines investigation requirement.</p>
           </div>
         </div>
-        <span class="px-2.5 py-1 bg-purple-200 text-purple-900 rounded font-semibold text-[11px]">Doctor Office</span>
+        <div class="flex items-center gap-2">
+          <span class="px-2.5 py-1 rounded font-bold text-[11px] ${isOldCase ? 'bg-blue-200 text-blue-900 border border-blue-300' : 'bg-emerald-200 text-emerald-900 border border-emerald-300'}">
+            ${isOldCase ? '🔄 Old Case (Re-visit)' : '✨ New Case (1st Visit)'}
+          </span>
+          <span class="px-2.5 py-1 bg-purple-200 text-purple-900 rounded font-semibold text-[11px]">Doctor Office</span>
+        </div>
       </div>
+
+      <!-- Returning Patient Prior Encounters or New Case Card -->
+      ${isOldCase && pastVisits.length > 0 ? `
+        <div class="bg-indigo-50/70 p-3.5 rounded-lg border border-indigo-200 space-y-2">
+          <div class="flex items-center justify-between text-indigo-950 font-bold">
+            <span class="flex items-center gap-1.5 text-xs"><i data-lucide="history" class="w-4 h-4 text-indigo-600"></i> Returning Patient Clinical History (${pastVisits.length} Previous Encounters Recorded)</span>
+            ${latestPriorVisit ? `<button type="button" onclick="copyPreviousOpdDiagnosis('${visit.VisitID}', '${latestPriorVisit.VisitID}')" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-semibold text-[11px] flex items-center gap-1 shadow-2xs transition"><i data-lucide="copy" class="w-3.5 h-3.5"></i> Pre-fill Previous Diagnosis & Plan</button>` : ''}
+          </div>
+          <div class="overflow-x-auto max-h-40 custom-scrollbar rounded border border-indigo-200 bg-white">
+            <table class="w-full text-left text-[11px] border-collapse">
+              <thead class="bg-indigo-100/60 text-indigo-900 sticky top-0 font-semibold">
+                <tr>
+                  <th class="p-2">Visit Date & ID</th>
+                  <th class="p-2">Chief Complaint</th>
+                  <th class="p-2">Diagnosis (ICD-10)</th>
+                  <th class="p-2">Attending Doctor</th>
+                  <th class="p-2 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-indigo-100">
+                ${pastVisits.map(pv => {
+                  const pDoc = DAL.findById('Doctors', pv.DoctorID) || {};
+                  return `
+                    <tr class="hover:bg-indigo-50/50">
+                      <td class="p-2 font-mono font-bold text-teal-800">${pv.VisitDate} <span class="text-slate-400 font-normal">(${pv.VisitID})</span></td>
+                      <td class="p-2 text-slate-700 max-w-xs truncate">${pv.ChiefComplaint || 'Routine assessment'}</td>
+                      <td class="p-2 font-semibold text-slate-900">${pv.DiagnosisSummary || 'In Progress'}</td>
+                      <td class="p-2 text-slate-600">${pDoc.DoctorName || pv.DoctorID}</td>
+                      <td class="p-2 text-right">
+                        <button type="button" onclick="copyPreviousOpdDiagnosis('${visit.VisitID}', '${pv.VisitID}')" class="text-indigo-600 hover:text-indigo-800 font-semibold underline text-[10px]">Use This Dx</button>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ` : `
+        <div class="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-emerald-950">
+          <div class="flex items-center gap-2">
+            <i data-lucide="sparkles" class="w-4 h-4 text-emerald-600"></i>
+            <span><strong>New Case (ករណីថ្មី):</strong> Initial OPD clinical presentation for this episode of care. Establishing baseline history, physical examination, and primary ICD-10 diagnosis.</span>
+          </div>
+          <span class="px-2 py-0.5 rounded text-[10px] bg-emerald-200 text-emerald-900 font-bold shrink-0">1st Visit</span>
+        </div>
+      `}
 
       <!-- Baseline Vitals Strip -->
       <div class="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs flex items-center justify-between flex-wrap gap-2 text-xs">
@@ -8508,7 +9844,9 @@ function renderIpdStage5_Discharge(adm, pat, doc, bed, rounds) {
   // Detailed Inpatient Bill Math
   const dailyBedRate = parseFloat(bed.DailyRate || 120);
   const totalBedCharges = days * dailyBedRate;
-  const physicianRoundFee = rounds.length * 40.00;
+  const docRoundSrv = (DAL.find('Services') || []).find(s => s.ServiceCode === 'IPD-DOC-RND');
+  const docRoundFee = docRoundSrv ? parseFloat(docRoundSrv.Price || 40) : 40.00;
+  const physicianRoundFee = rounds.length * docRoundFee;
   const diagnosticsTotal = ipdOrders.reduce((acc, o) => {
     const t = masterTests.find(m => m.TestID === o.TestID);
     return acc + (t ? parseFloat(t.Cost) : 40.00);
@@ -8672,7 +10010,9 @@ function handleFinalizeIpdDischarge(e, admissionId) {
   const days = Math.max(1, Math.ceil((new Date(dischDate) - new Date(adm.AdmissionDate)) / (1000 * 60 * 60 * 24)));
   const dailyBedRate = parseFloat(bed.DailyRate || 120);
   const totalBedCharges = days * dailyBedRate;
-  const physicianRoundFee = rounds.length * 40.00;
+  const docRoundSrv = (DAL.find('Services') || []).find(s => s.ServiceCode === 'IPD-DOC-RND');
+  const docRoundFee = docRoundSrv ? parseFloat(docRoundSrv.Price || 40) : 40.00;
+  const physicianRoundFee = rounds.length * docRoundFee;
 
   const masterTests = DAL.find('LaboratoryTests');
   const masterMeds = DAL.find('Medications');

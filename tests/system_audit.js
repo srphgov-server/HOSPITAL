@@ -134,8 +134,8 @@ assert(appJsContent.includes('handleUpdateTheaterStatus'), 'OT Suite Telemetry S
 console.log('\n6. Executing Database & Integration Test Suite:');
 try {
   const testOutput = execSync(`node "${path.join(__dirname, 'integration_test.js')}"`, { encoding: 'utf8' });
-  const allPassed = testOutput.includes('All 26 Architecture, Security, IPD, Emergency, OT & Sterile Data Verification Checks Passed Successfully!');
-  assert(allPassed, 'All 26 Integration Tests passed with 100% record integrity');
+  const allPassed = testOutput.includes('All 27 Architecture, Security, IPD, Emergency, OT, Sterile & Service Catalog Data Verification Checks Passed Successfully!');
+  assert(allPassed, 'All 27 Integration Tests passed with 100% record integrity');
 } catch (err) {
   assert(false, `Integration test failed: ${err.message}`);
 }

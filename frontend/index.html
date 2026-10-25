@@ -173,6 +173,7 @@
           <button onclick="quickCreate('surgery')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="scissors" class="w-3.5 h-3.5 text-rose-600"></i> <span data-i18n="qc_surgery">Schedule Surgery / OT</span></button>
           <button onclick="quickCreate('sterile_tray')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-emerald-600"></i> <span data-i18n="qc_sterile_tray">New Sterile Tray (CSSD)</span></button>
           <button onclick="quickCreate('user')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2"><i data-lucide="user-plus" class="w-3.5 h-3.5 text-slate-700"></i> <span data-i18n="qc_user">New User</span></button>
+          <button onclick="quickCreate('service')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2 border-t border-slate-100"><i data-lucide="badge-dollar-sign" class="w-3.5 h-3.5 text-emerald-600"></i> <span data-i18n="qc_service">New Service / Fee</span></button>
         </div>
       </div>
 
@@ -390,6 +391,10 @@
             <button onclick="navigateTo('departments')" id="nav-departments" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
               <i data-lucide="building-2" class="w-4 h-4 text-cyan-700"></i>
               <span data-i18n="nav_departments">Departments</span>
+            </button>
+            <button onclick="navigateTo('services')" id="nav-services" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
+              <i data-lucide="badge-dollar-sign" class="w-4 h-4 text-emerald-600"></i>
+              <span data-i18n="nav_services">Service List & Fees</span>
             </button>
             <button onclick="navigateTo('followups')" id="nav-followups" class="nav-btn w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-700 hover:bg-[#e1dfdd] transition">
               <i data-lucide="bell-ring" class="w-4 h-4 text-rose-600"></i>

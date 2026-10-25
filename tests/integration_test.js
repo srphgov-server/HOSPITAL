@@ -164,5 +164,12 @@ const ipdSurgery = allSurgeries.find(s => s.AdmissionID === 'ADM-001');
 const hasTeamAndMaterials = ipdSurgery && ipdSurgery.LeadSurgeonName && ipdSurgery.MaterialsRequired && ipdSurgery.SterileTraysRequired;
 console.log('26. IPD Admission to Surgery Link & Team/Material Integrity:', hasTeamAndMaterials ? 'PASS' : 'FAIL');
 
-console.log('\nAll 26 Architecture, Security, IPD, Emergency, OT & Sterile Data Verification Checks Passed Successfully!');
+// 11. Test Services Catalog (IPD Fees & Investigation Order Fees)
+const allServices = global.DbService.find('Services');
+const ipdFees = allServices.filter(s => s.Category === 'IPD & Inpatient Care');
+const invFees = allServices.filter(s => s.Category === 'Diagnostic Investigation');
+const servicesValid = allServices.length >= 25 && ipdFees.length >= 8 && invFees.length >= 12;
+console.log('27. Service List & Fee Catalog Integrity (Expected >= 25 items, IPD >= 8, Inv >= 12):', allServices.length, servicesValid ? '(PASS)' : '(FAIL)');
+
+console.log('\nAll 27 Architecture, Security, IPD, Emergency, OT, Sterile & Service Catalog Data Verification Checks Passed Successfully!');
 

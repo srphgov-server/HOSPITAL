@@ -92,6 +92,8 @@ const DB_SCHEMA = {
     'NeedsInvestigation', // Yes | No
     'DischargeDisposition', // Discharged Home | Admit to IPD | Follow-up | Specialist Referral
     'DischargeNotes',
+    'CaseType',           // New Case | Old Case
+    'PreviousVisitID',    // Optional ID linking to past visit for returning patients
     'CreatedAt',
     'UpdatedAt'
   ],
@@ -447,6 +449,25 @@ const DB_SCHEMA = {
     'Status',               // Sterile - Ready for OR | In Use | Decontamination & Washing | Packaging & Autoclaving
     'AssignedSurgeryID',
     'TechnicianName',
+    'CreatedAt',
+    'UpdatedAt'
+  ],
+
+  // 26. Services Table (Hospital Master Fee Schedule: IPD Fees, Investigation Fees, OPD/ER & OT Procedures)
+  Services: [
+    'ServiceID',
+    'ServiceCode',
+    'ServiceName',
+    'Category',             // IPD & Inpatient Care | Diagnostic Investigation | OPD & Emergency | Surgical & OT | Nursing & Therapy
+    'SubCategory',          // Ward Bed Fee | Physician Rounds | Laboratory Pathology | Radiology Imaging | Cardiology Diagnostics | Consultation Fee | Operating Theater | Sterile Processing | Clinical Procedure
+    'DepartmentID',
+    'DepartmentName',
+    'Price',
+    'Cost',
+    'BillingUnit',          // Per Day | Per Order | Per Study | Per Consultation | Per Procedure | Per Treatment | Per Set
+    'TaxRate',
+    'Status',               // Active | Inactive
+    'Description',
     'CreatedAt',
     'UpdatedAt'
   ]
